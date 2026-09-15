@@ -1,0 +1,38 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Temporary files and logs
+*.tmp
+*.log
+
+# Local project documentation
+REQUISITOS.md
+ARQUITETURA.md
+ARQUITETURA_SIEPA.drawio
+MODELAGEM_DE_DADOS.md
+specs/
