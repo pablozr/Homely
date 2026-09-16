@@ -3,11 +3,9 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core.config.config import DEFAULT_SECRET_KEY, Settings
-from core.cookies import set_session_cookies
 from core.security.jwt_payloads import auth_jwt_payload_from_row
 from core.security.security import (
     create_access_token,
@@ -95,17 +93,6 @@ class RefreshTokenTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(user["id"], user_id)
         self.assertEqual(connection.fetchrow.await_args.args[1], user_id)
-
-    def test_session_cookies_are_http_only_and_strict(self):
-        response = JSONResponse(content={})
-
-        set_session_cookies(response, "access", "refresh")
-
-        cookies = response.headers.getlist("set-cookie")
-        self.assertEqual(len(cookies), 2)
-        self.assertTrue(all("HttpOnly" in cookie for cookie in cookies))
-        self.assertTrue(all("SameSite=strict" in cookie for cookie in cookies))
-        self.assertTrue(any("Path=/auth" in cookie for cookie in cookies))
 
     async def test_refresh_rotates_the_session_token(self):
         refresh_token = "current-refresh-token"

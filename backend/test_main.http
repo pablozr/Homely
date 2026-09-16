@@ -3,10 +3,33 @@ Accept: application/json
 
 ###
 
-POST http://127.0.0.1:8000/auth/login
+POST http://127.0.0.1:8000/auth/magic-link
 Content-Type: application/json
 
 {
-  "email": "admin@example.com",
-  "password": "admin"
+  "email": "morador@example.com"
 }
+
+###
+
+# Copie o auth_code do e-mail capturado em http://localhost:8025
+POST http://127.0.0.1:8000/auth/exchange
+Content-Type: application/json
+
+{
+  "auth_code": "cole-o-auth-code-aqui"
+}
+
+###
+
+POST http://127.0.0.1:8000/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "cole-o-refresh-token-aqui"
+}
+
+###
+
+GET http://127.0.0.1:8000/auth/me
+Authorization: Bearer cole-o-access-token-aqui

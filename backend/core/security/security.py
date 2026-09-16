@@ -32,6 +32,14 @@ def hash_refresh_token(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
 
 
+def create_magic_link_code() -> str:
+    return token_urlsafe(32)
+
+
+def hash_magic_link_code(code: str) -> str:
+    return sha256(code.encode("utf-8")).hexdigest()
+
+
 async def verify_token(
     token: str,
     conn: asyncpg.Connection,

@@ -25,7 +25,17 @@ class Settings(BaseSettings):
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025
     SMTP_FROM_EMAIL: str = "no-reply@homely.local"
+    SMTP_TIMEOUT_SECONDS: int = 10
     PUSH_ENABLED: bool = False
+
+    MAGIC_LINK_EXPIRE_MINUTES: int = 15
+    MAGIC_LINK_DEEP_LINK_BASE: str = "homely://auth"
+    MAGIC_LINK_EMAIL_RATE_LIMIT: int = 3
+    MAGIC_LINK_EMAIL_RATE_WINDOW_MINUTES: int = 15
+    MAGIC_LINK_IP_RATE_LIMIT: int = 10
+    MAGIC_LINK_IP_RATE_WINDOW_MINUTES: int = 60
+    MAGIC_LINK_EXCHANGE_IP_RATE_LIMIT: int = 10
+    MAGIC_LINK_EXCHANGE_IP_RATE_WINDOW_MINUTES: int = 15
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -41,9 +51,4 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-IS_DEVELOPMENT = settings.ENVIRONMENT.lower() == "development"
-COOKIE_AUTH = "auth"
-COOKIE_REFRESH = "refresh"
-AUTH_COOKIE_MAX_AGE = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-REFRESH_COOKIE_MAX_AGE = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400
 ROLE_RANK_BY_NAME = {"BASIC": 1, "ADMIN": 2}

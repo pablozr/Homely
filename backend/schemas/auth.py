@@ -1,14 +1,27 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
-class LoginRequestModel(BaseModel):
+class MagicLinkRequestModel(BaseModel):
     email: str
-    password: str
 
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
-        return value.strip().lower()
+        email = value.strip().lower()
+        local, separator, domain = email.partition("@")
+
+        if not separator or not local or not domain or " " in email:
+            raise ValueError("Invalid email")
+
+        return email
+
+
+class ExchangeRequestModel(BaseModel):
+    auth_code: str = Field(min_length=1)
+
+
+class RefreshTokenRequestModel(BaseModel):
+    refresh_token: str = Field(min_length=1)
 
 
 def user_from_row(row) -> dict:

@@ -1,23 +1,26 @@
 import asyncpg
 from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.config.config import COOKIE_AUTH, ROLE_RANK_BY_NAME
+from core.config.config import ROLE_RANK_BY_NAME
 from core.logger.logger import logger
 from core.postgresql.postgresql import postgresql
 from core.security.security import verify_token
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 
 async def validate_token(
     request: Request,
+    credentials: HTTPAuthorizationCredentials | None,
     conn: asyncpg.Connection,
     expected_type: str = "auth",
 ) -> dict:
     try:
-        token = request.cookies.get(COOKIE_AUTH)
-
-        if not token:
+        if credentials is None or not credentials.credentials:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
+        token = credentials.credentials
         user = await verify_token(token, conn=conn, expected_type=expected_type)
 
         if user is None:
@@ -39,9 +42,10 @@ async def validate_token(
 
 async def validate_token_wrapper(
     request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     conn: asyncpg.Connection = Depends(postgresql.get_db),
 ) -> dict:
-    return await validate_token(request, conn)
+    return await validate_token(request, credentials, conn)
 
 
 def require_minimum_rank(minimum_rank: int):

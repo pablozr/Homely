@@ -4,7 +4,7 @@
 
 - Use FastAPI routes, Pydantic schemas, service modules, and core utilities.
 - Use `asyncpg` and explicit parameterized SQL (`$1`, `$2`, ...) for database access. Do not introduce an ORM.
-- Keep authentication tokens in HTTP-only cookies through `core.cookies`.
+- Send access tokens as Bearer credentials. Store opaque refresh tokens only as hashes.
 - Normalize and validate request data in Pydantic schemas. Keep data serialization close to its schema/entity representation.
 
 ## Code Style
@@ -51,5 +51,5 @@
 - `status_code` is an HTTP status code: use `200` for successful reads/updates, `201` for creation, `204` for successful empty responses, `400` for invalid requests, `401` for invalid authentication, `403` for forbidden actions, `404` for missing resources, and `500` for unexpected server failures.
 - Route handlers must use `core.responses.default_response` for service calls. It accepts synchronous or asynchronous callables, awaits only when needed, serializes response data with `jsonable_encoder`, and returns a JSON response with `message` and `data`, except for `204`, which has no body.
 - Keep transport-specific work in routes. When a successful service result must set a cookie or header, use `default_response`'s `on_success` callback and exclude secret fields from `data`.
-- Access tokens are short-lived JWTs. Refresh tokens are opaque, stored only in HTTP-only `SameSite=Strict` cookies, and persisted only as hashes. Rotate refresh tokens in a transaction and revoke their whole family when a rotated token is reused.
+- Access tokens are short-lived JWTs sent as Bearer credentials. Refresh tokens are opaque, returned only in the auth exchange and refresh JSON responses, and persisted only as hashes. Rotate refresh tokens in a transaction and revoke their whole family when a rotated token is reused.
 - Do not expose internal fields such as access tokens or `status_code` in response bodies.

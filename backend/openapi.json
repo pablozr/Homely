@@ -5,18 +5,57 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/auth/login": {
+    "/auth/magic-link": {
       "post": {
         "tags": [
           "auth"
         ],
-        "summary": "Login",
-        "operationId": "login_auth_login_post",
+        "summary": "Request Magic Link",
+        "operationId": "request_magic_link_auth_magic_link_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LoginRequestModel"
+                "$ref": "#/components/schemas/MagicLinkRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/exchange": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Exchange",
+        "operationId": "exchange_auth_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeRequestModel"
               }
             }
           },
@@ -51,12 +90,32 @@
         ],
         "summary": "Refresh",
         "operationId": "refresh_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -70,12 +129,32 @@
         ],
         "summary": "Logout",
         "operationId": "logout_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -98,7 +177,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/health": {
@@ -129,6 +213,20 @@
   },
   "components": {
     "schemas": {
+      "ExchangeRequestModel": {
+        "properties": {
+          "auth_code": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Auth Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_code"
+        ],
+        "title": "ExchangeRequestModel"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -142,23 +240,32 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "LoginRequestModel": {
+      "MagicLinkRequestModel": {
         "properties": {
           "email": {
             "type": "string",
             "title": "Email"
-          },
-          "password": {
-            "type": "string",
-            "title": "Password"
           }
         },
         "type": "object",
         "required": [
-          "email",
-          "password"
+          "email"
         ],
-        "title": "LoginRequestModel"
+        "title": "MagicLinkRequestModel"
+      },
+      "RefreshTokenRequestModel": {
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Refresh Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshTokenRequestModel"
       },
       "ValidationError": {
         "properties": {
@@ -199,6 +306,12 @@
           "type"
         ],
         "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
       }
     }
   }

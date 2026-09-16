@@ -2,6 +2,5 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 asyncpg
-bcrypt
 PyJWT
 alembic
