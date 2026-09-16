@@ -5,7 +5,7 @@ Aplicativo mobile para moradores organizarem a rotina de uma casa compartilhada:
 ## Estrutura
 
 - `backend/`: API FastAPI, migrations Alembic, PostgreSQL e processos de scheduler/worker.
-- `mobile/`: aplicativo Expo/React Native. Será criado no primeiro ticket de fundação.
+- `mobile/`: aplicativo Expo/React Native com Expo Router.
 - `docs/`: visão, especificação, arquitetura e tickets locais do V0.
 
 ## Princípios
@@ -71,3 +71,11 @@ Serviços locais:
 - Push: desabilitado (`PUSH_ENABLED=false`)
 
 Para encerrar os serviços, execute `docker compose -f backend/docker-compose.yml down`. Use `down -v` somente quando quiser apagar o banco local.
+
+## Mobile Local
+
+Para apontar o app para a API local, copie `mobile/.env.example` para `mobile/.env`.
+
+- Android Emulator usa `http://10.0.2.2:8000`.
+- Em aparelho físico, use o IP LAN da máquina que executa a API.
+- iOS Simulator pode usar `http://localhost:8000`.
