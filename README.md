@@ -35,3 +35,39 @@ Builds mobile apontam apenas para a API do ambiente correspondente. Tokens, stor
 5. Push notifications e operação.
 
 Os detalhes técnicos e decisões de domínio estão em `docs/v0-especificacao.md` e `docs/arquitetura-v0.md`.
+
+## Ambiente Local
+
+Pré-requisitos: Docker Compose e Python 3.11+.
+
+1. Copie `backend/.env.example` para `backend/.env`.
+2. Inicie PostgreSQL e Mailpit:
+
+```powershell
+docker compose -f backend/docker-compose.yml up -d --wait
+```
+
+3. Instale as dependências e aplique migrations:
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+alembic upgrade head
+```
+
+4. Inicie a API:
+
+```powershell
+uvicorn main:app --reload
+```
+
+Serviços locais:
+
+- API: `http://localhost:8000/health`
+- PostgreSQL: `localhost:5432` (`homely` / `homely`), acessivel somente nesta maquina
+- Mailpit: `http://localhost:8025` e SMTP em `localhost:1025`
+- Push: desabilitado (`PUSH_ENABLED=false`)
+
+Para encerrar os serviços, execute `docker compose -f backend/docker-compose.yml down`. Use `down -v` somente quando quiser apagar o banco local.
