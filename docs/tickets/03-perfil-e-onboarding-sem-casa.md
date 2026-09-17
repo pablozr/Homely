@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 - Magic link e sessao mobile.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Usuario possui e-mail unico normalizado, display name editavel e avatar opcional sem upload no V0.
-- [ ] Primeiro acesso solicita apenas o nome, sugerindo a parte anterior ao `@` do e-mail.
-- [ ] Sem household ativa, o app exibe somente Criar casa e Entrar por convite.
-- [ ] Outros membros veem nome e iniciais, nunca o e-mail.
+- [x] Usuario possui e-mail unico normalizado, display name editavel e avatar opcional sem upload no V0.
+- [x] Primeiro acesso solicita apenas o nome, sugerindo a parte anterior ao `@` do e-mail.
+- [x] Sem household ativa, o app exibe somente Criar casa e Entrar por convite.
+- [x] Outros membros veem nome e iniciais, nunca o e-mail.

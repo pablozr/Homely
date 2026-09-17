@@ -4,9 +4,9 @@
 
 **Blocked by:** 03 - Perfil e onboarding sem casa.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Criacao atomica gera household e membership OWNER, com timezone IANA e `default_due_time` inicial de 20:00.
-- [ ] O app abre diretamente a unica household ativa; com varias, reabre a ultima usada e permite troca em seletor simples.
-- [ ] Todas as operacoes de household validam membership no backend.
-- [ ] Criacao aceita idempotency key e retries nao duplicam household nem auditoria.
+- [x] Criacao atomica gera household e membership OWNER, com timezone IANA e `default_due_time` inicial de 20:00.
+- [x] O app abre diretamente a unica household ativa; com varias, reabre a ultima usada e permite troca em seletor simples.
+- [x] Todas as operacoes de household validam membership no backend.
+- [x] Criacao aceita idempotency key e retries nao duplicam household nem auditoria.
