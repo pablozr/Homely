@@ -39,6 +39,7 @@ jobs:
       - run: pip install -r ../backend/requirements.txt
       - run: npm ci
       - run: python ../backend/scripts/export_openapi.py
+      - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
