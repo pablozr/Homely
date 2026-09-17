@@ -8,8 +8,11 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
+
   ios: { supportsTablet: true },
+
   android: {
+    package: 'com.pablozr.homely',
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/android-icon-foreground.png',
@@ -18,6 +21,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
   },
+
   plugins: ['expo-router', 'expo-status-bar'],
 };
 

@@ -18,5 +18,6 @@ const styles = StyleSheet.create({
     padding: 32,
     backgroundColor: '#F7F6F2',
   },
+
   label: { fontSize: 16, color: '#526258' },
 });

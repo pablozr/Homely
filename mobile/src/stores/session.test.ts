@@ -8,6 +8,7 @@ const user = {
   fullname: 'Ada',
   email: 'ada@example.com',
   role: 'user',
+  profile_completed: false,
   created_at: null,
 };
 
@@ -29,6 +30,21 @@ test('setSession keeps the access token in memory', () => {
   assert.equal(useSessionStore.getState().status, 'authenticated');
   assert.equal(useSessionStore.getState().accessToken, 'access-1');
   assert.deepEqual(useSessionStore.getState().user, user);
+});
+
+test('updateUser merges the profile fields and preserves the access token', () => {
+  resetSession();
+  useSessionStore.getState().setSession({ user, accessToken: 'access-1' });
+
+  useSessionStore.getState().updateUser({ fullname: 'Ada Lovelace', profile_completed: true });
+
+  assert.equal(useSessionStore.getState().accessToken, 'access-1');
+  assert.equal(useSessionStore.getState().status, 'authenticated');
+  assert.deepEqual(useSessionStore.getState().user, {
+    ...user,
+    fullname: 'Ada Lovelace',
+    profile_completed: true,
+  });
 });
 
 test('clearSession drops the access token and user', () => {

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 
+import { QueryClient } from '@tanstack/react-query';
+
+import { clearHouseholdCache, householdsQueryKey, queryClient } from '@/lib/query-client';
+import { useActiveHouseholdStore } from '@/stores/active-household';
 import { useSessionStore } from '@/stores/session';
 import { establishSessionFromCode, restoreSession, signOut } from './session';
 
@@ -9,6 +13,7 @@ const user = {
   fullname: 'Ada',
   email: 'ada@example.com',
   role: 'user',
+  profile_completed: false,
   created_at: null,
 };
 
@@ -22,10 +27,13 @@ function createTokenStore(initial: string | null) {
 
   return {
     current: () => token,
+
     get: async () => token,
+
     set: async (next: string) => {
       token = next;
     },
+
     clear: async () => {
       token = null;
     },
@@ -56,6 +64,7 @@ function mockJson(context: TestContext, body: unknown, status = 200): CapturedRe
 
 test('establishSessionFromCode stores only the refresh token and keeps the access token in memory', async (context) => {
   resetSession();
+
   const store = createTokenStore(null);
   mockJson(context, {
     message: 'Session created',
@@ -72,6 +81,7 @@ test('establishSessionFromCode stores only the refresh token and keeps the acces
 
 test('restoreSession goes straight to unauthenticated without a stored refresh token', async (context) => {
   resetSession();
+
   const store = createTokenStore(null);
   const calls = mockJson(context, {});
 
@@ -83,6 +93,7 @@ test('restoreSession goes straight to unauthenticated without a stored refresh t
 
 test('restoreSession refreshes tokens and loads the user silently', async (context) => {
   resetSession();
+
   const store = createTokenStore('refresh-1');
   const calls: CapturedRequest[] = [];
 
@@ -115,6 +126,7 @@ test('restoreSession refreshes tokens and loads the user silently', async (conte
 
 test('restoreSession clears a rejected refresh token', async (context) => {
   resetSession();
+
   const store = createTokenStore('stale');
   mockJson(context, { message: 'Invalid refresh token', data: {} }, 401);
 
@@ -126,6 +138,7 @@ test('restoreSession clears a rejected refresh token', async (context) => {
 
 test('restoreSession keeps the rotated token and exits restoration when profile loading fails', async (context) => {
   resetSession();
+
   const store = createTokenStore('refresh-1');
 
   context.mock.method(globalThis, 'fetch', async (...args: Parameters<typeof fetch>) => {
@@ -147,6 +160,7 @@ test('restoreSession keeps the rotated token and exits restoration when profile 
 
 test('serializes a deep link exchange before session restoration', async (context) => {
   resetSession();
+
   const store = createTokenStore('stale-refresh');
   const calls: CapturedRequest[] = [];
 
@@ -182,6 +196,8 @@ test('serializes a deep link exchange before session restoration', async (contex
 test('signOut revokes the refresh token and clears the local session', async (context) => {
   resetSession();
   useSessionStore.getState().setSession({ user, accessToken: 'access-1' });
+  useActiveHouseholdStore.getState().setActiveHouseholdId('h1');
+
   const store = createTokenStore('refresh-1');
   const calls = mockJson(context, { message: 'Logged out', data: {} });
 
@@ -192,11 +208,14 @@ test('signOut revokes the refresh token and clears the local session', async (co
   assert.equal(store.current(), null);
   assert.equal(useSessionStore.getState().status, 'unauthenticated');
   assert.equal(useSessionStore.getState().accessToken, null);
+  assert.equal(useActiveHouseholdStore.getState().activeHouseholdId, null);
 });
 
 test('signOut still ends the local session when revocation fails', async (context) => {
   resetSession();
   useSessionStore.getState().setSession({ user, accessToken: 'access-1' });
+  useActiveHouseholdStore.getState().setActiveHouseholdId('h1');
+
   const store = createTokenStore('refresh-1');
   mockJson(context, { message: 'Internal server error', data: {} }, 500);
 
@@ -204,4 +223,40 @@ test('signOut still ends the local session when revocation fails', async (contex
 
   assert.equal(store.current(), null);
   assert.equal(useSessionStore.getState().status, 'unauthenticated');
+  assert.equal(useActiveHouseholdStore.getState().activeHouseholdId, null);
+});
+
+test('signOut removes the cached households so the next login cannot leak them', async (context) => {
+  resetSession();
+  useSessionStore.getState().setSession({ user, accessToken: 'access-1' });
+  useActiveHouseholdStore.getState().setActiveHouseholdId('h1');
+
+  const store = createTokenStore('refresh-1');
+  mockJson(context, { message: 'Logged out', data: {} });
+
+  const client = new QueryClient();
+  client.setQueryData(householdsQueryKey, {
+    message: 'Households retrieved',
+    data: { households: [{ id: 'previous-account' }], selected_household_id: 'previous-account' },
+  });
+
+  await signOut(store, () => clearHouseholdCache(client));
+
+  assert.equal(client.getQueryData(householdsQueryKey), undefined);
+});
+
+test('signOut clears the shared query client used by the app provider', async (context) => {
+  resetSession();
+  useSessionStore.getState().setSession({ user, accessToken: 'access-1' });
+
+  const store = createTokenStore('refresh-1');
+  mockJson(context, { message: 'Logged out', data: {} });
+  queryClient.setQueryData(householdsQueryKey, {
+    message: 'Households retrieved',
+    data: { households: [{ id: 'previous-account' }], selected_household_id: 'previous-account' },
+  });
+
+  await signOut(store);
+
+  assert.equal(queryClient.getQueryData(householdsQueryKey), undefined);
 });

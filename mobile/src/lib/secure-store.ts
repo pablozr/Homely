@@ -12,9 +12,11 @@ export const refreshTokenStorage: TokenStore = {
   get() {
     return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
   },
+
   set(refreshToken) {
     return SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
   },
+
   clear() {
     return SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
   },

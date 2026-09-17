@@ -89,6 +89,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profile/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile */
+        get: operations["get_profile_profile_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Profile */
+        patch: operations["update_profile_profile_me_patch"];
+        trace?: never;
+    };
+    "/households": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Households */
+        get: operations["list_households_households_get"];
+        put?: never;
+        /** Create Household */
+        post: operations["create_household_households_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Select Household */
+        patch: operations["select_household_households__household_id__selection_patch"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -120,10 +173,84 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HouseholdCreateRequestModel */
+        HouseholdCreateRequestModel: {
+            /** Name */
+            name: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /** HouseholdCreatedDataModel */
+        HouseholdCreatedDataModel: {
+            household: components["schemas"]["HouseholdSummaryModel"];
+            /**
+             * Selected Household Id
+             * Format: uuid
+             */
+            selected_household_id: string;
+        };
+        /** HouseholdCreatedResponseModel */
+        HouseholdCreatedResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["HouseholdCreatedDataModel"];
+        };
+        /** HouseholdSelectionDataModel */
+        HouseholdSelectionDataModel: {
+            /**
+             * Selected Household Id
+             * Format: uuid
+             */
+            selected_household_id: string;
+        };
+        /** HouseholdSelectionResponseModel */
+        HouseholdSelectionResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["HouseholdSelectionDataModel"];
+        };
+        /** HouseholdSummaryModel */
+        HouseholdSummaryModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Timezone */
+            timezone: string;
+            /** Default Due Time */
+            default_due_time: string;
+            /** Role */
+            role: string;
+            /** Joined At */
+            joined_at: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** HouseholdsDataModel */
+        HouseholdsDataModel: {
+            /** Households */
+            households: components["schemas"]["HouseholdSummaryModel"][];
+            /** Selected Household Id */
+            selected_household_id: string | null;
+        };
+        /** HouseholdsResponseModel */
+        HouseholdsResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["HouseholdsDataModel"];
+        };
         /** MagicLinkRequestModel */
         MagicLinkRequestModel: {
             /** Email */
             email: string;
+        };
+        /** ProfileUpdateRequestModel */
+        ProfileUpdateRequestModel: {
+            /** Fullname */
+            fullname: string;
         };
         /** RefreshTokenRequestModel */
         RefreshTokenRequestModel: {
@@ -300,6 +427,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_profile_profile_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    update_profile_profile_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdateRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_households_households_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdsResponseModel"];
+                };
+            };
+        };
+    };
+    create_household_households_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HouseholdCreateRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdCreatedResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_household_households__household_id__selection_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSelectionResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

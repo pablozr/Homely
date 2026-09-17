@@ -10,6 +10,7 @@ export function useAuthDeepLink(): void {
   const router = useRouter();
   const { mutate: exchange } = useExchangeMagicLink();
   const handledCode = useRef<string | null>(null);
+
   const authCode = authCodeFromUrl(url);
 
   useEffect(() => {

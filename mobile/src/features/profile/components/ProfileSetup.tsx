@@ -1,70 +1,61 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useRequestMagicLink } from '@/features/auth/mutations';
-import { emailSchema } from '@/features/auth/schemas';
+import { useUpdateProfile } from '@/features/profile/mutations';
+import { fullnameSchema } from '@/features/profile/schemas';
+import { useSessionStore } from '@/stores/session';
 
-export function MagicLinkForm() {
-  const [email, setEmail] = useState('');
+export function ProfileSetup() {
+  const suggestedName = useSessionStore((state) => state.user?.fullname ?? '');
+  const [fullname, setFullname] = useState(suggestedName);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const requestMagicLink = useRequestMagicLink();
+  const updateProfile = useUpdateProfile();
 
   function handleSubmit() {
-    const parsed = emailSchema.safeParse(email);
+    const parsed = fullnameSchema.safeParse(fullname);
 
     if (!parsed.success) {
-      setValidationError('Informe um e-mail valido.');
+      setValidationError(parsed.error.issues[0]?.message ?? 'Informe um nome.');
       return;
     }
 
     setValidationError(null);
-    requestMagicLink.mutate(parsed.data);
-  }
-
-  if (requestMagicLink.isSuccess) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Verifique seu e-mail</Text>
-        <Text style={styles.subtitle}>
-          Enviamos um link de acesso para {requestMagicLink.variables}. Abra o link para entrar.
-        </Text>
-      </View>
-    );
+    updateProfile.mutate(parsed.data);
   }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Homely</Text>
-      <Text style={styles.subtitle}>Entre com seu e-mail, sem senha.</Text>
+      <Text style={styles.subtitle}>Como voce quer ser chamado?</Text>
 
       <TextInput
         style={styles.input}
-        value={email}
-        onChangeText={setEmail}
-        placeholder="voce@exemplo.com"
+        value={fullname}
+        onChangeText={setFullname}
+        placeholder="Seu nome"
         placeholderTextColor="#8A968E"
-        keyboardType="email-address"
-        autoCapitalize="none"
+        autoCapitalize="words"
         autoCorrect={false}
-        autoComplete="email"
-        editable={!requestMagicLink.isPending}
+        maxLength={255}
+        editable={!updateProfile.isPending}
         onSubmitEditing={handleSubmit}
       />
 
       {validationError ? <Text style={styles.error}>{validationError}</Text> : null}
-      {requestMagicLink.isError ? (
-        <Text style={styles.error}>Nao foi possivel enviar o link. Tente novamente.</Text>
+      {updateProfile.isError ? (
+        <Text style={styles.error}>Nao foi possivel salvar o nome. Tente novamente.</Text>
       ) : null}
 
       <Pressable
-        style={[styles.button, requestMagicLink.isPending && styles.buttonDisabled]}
+        style={[styles.button, updateProfile.isPending && styles.buttonDisabled]}
         onPress={handleSubmit}
-        disabled={requestMagicLink.isPending}
+        disabled={updateProfile.isPending}
+        accessibilityRole="button"
       >
-        {requestMagicLink.isPending ? (
+        {updateProfile.isPending ? (
           <ActivityIndicator color="#F7F6F2" />
         ) : (
-          <Text style={styles.buttonLabel}>Enviar link de acesso</Text>
+          <Text style={styles.buttonLabel}>Continuar</Text>
         )}
       </Pressable>
     </View>

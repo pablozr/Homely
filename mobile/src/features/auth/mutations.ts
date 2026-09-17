@@ -1,12 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 
-import { api } from '@/api/client';
 import { refreshTokenStorage } from '@/lib/secure-store';
+import { authApi } from './api';
 import { establishSessionFromCode, restoreSession, signOut } from './session';
 
 export function useRequestMagicLink() {
   return useMutation({
-    mutationFn: (email: string) => api.requestMagicLink({ email }),
+    mutationFn: (email: string) => authApi.requestMagicLink({ email }),
   });
 }
 

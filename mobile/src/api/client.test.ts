@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 
-import { api } from './client';
+import { ApiError, getErrorMessage, request } from './client';
 import { API_URL } from './config';
 
 type CapturedRequest = {
@@ -20,80 +20,116 @@ function mockFetch(context: TestContext, body: unknown, status = 200) {
   return calls;
 }
 
-test('returns the health response', async (context) => {
-  const fetchMock = context.mock.method(globalThis, 'fetch', async () =>
-    new Response(JSON.stringify({ status: 'ok' }), { status: 200 }),
-  );
-
-  assert.deepEqual(await api.health(), { status: 'ok' });
-  assert.equal(fetchMock.mock.callCount(), 1);
-});
-
 test('rejects non-success responses', async (context) => {
   context.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 503 }));
 
-  await assert.rejects(api.health(), /API request failed: 503/);
+  await assert.rejects(request('/health'), /API request failed: 503/);
 });
 
-test('requests a magic link with the email payload', async (context) => {
-  const calls = mockFetch(context, { message: 'Magic link sent', data: {} });
-
-  await api.requestMagicLink({ email: 'person@example.com' });
-
-  assert.equal(calls[0].url, `${API_URL}/auth/magic-link`);
-  assert.equal(calls[0].init?.method, 'POST');
-  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { email: 'person@example.com' });
-});
-
-test('exchanges a magic link code for a session', async (context) => {
-  const calls = mockFetch(context, {
-    message: 'Session created',
-    data: {
-      user: { id: 'u1', fullname: 'Ada', email: 'ada@example.com', role: 'user', created_at: null },
-      access_token: 'access-1',
-      refresh_token: 'refresh-1',
-    },
-  });
-
-  const response = await api.exchange({ auth_code: 'code-1' });
-
-  assert.equal(calls[0].url, `${API_URL}/auth/exchange`);
-  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { auth_code: 'code-1' });
-  assert.equal(response.data.access_token, 'access-1');
-  assert.equal(response.data.user.email, 'ada@example.com');
-});
-
-test('refreshes a session with the stored refresh token', async (context) => {
-  const calls = mockFetch(context, {
-    message: 'Token refreshed',
-    data: { access_token: 'access-2', refresh_token: 'refresh-2' },
-  });
-
-  await api.refresh({ refresh_token: 'refresh-1' });
-
-  assert.equal(calls[0].url, `${API_URL}/auth/refresh`);
-  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { refresh_token: 'refresh-1' });
-});
-
-test('logs out the stored refresh token', async (context) => {
-  const calls = mockFetch(context, { message: 'Logged out', data: {} });
-
-  await api.logout({ refresh_token: 'refresh-1' });
-
-  assert.equal(calls[0].url, `${API_URL}/auth/logout`);
-  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { refresh_token: 'refresh-1' });
-});
-
-test('authenticates the current user request with the access token', async (context) => {
-  const calls = mockFetch(context, {
-    data: { user: { id: 'u1', fullname: 'Ada', email: 'ada@example.com', role: 'user', created_at: null } },
-  });
-
-  await api.me('access-1');
-
-  assert.equal(calls[0].url, `${API_URL}/auth/me`);
-  assert.equal(
-    (calls[0].init?.headers as Record<string, string>).Authorization,
-    'Bearer access-1',
+test('exposes status and the string detail of a 422 response', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(JSON.stringify({ detail: 'Invalid Idempotency-Key header' }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      }),
   );
+
+  await assert.rejects(request('/households', { method: 'POST' }), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 422);
+    assert.equal(error.message, 'Invalid Idempotency-Key header');
+    return true;
+  });
+});
+
+test('uses the first message of a FastAPI array detail on 422', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(
+        JSON.stringify({
+          detail: [
+            {
+              loc: ['body', 'name'],
+              msg: 'String should have at most 255 characters',
+              type: 'string_too_long',
+            },
+            { loc: ['body', 'timezone'], msg: 'Invalid timezone', type: 'value_error' },
+          ],
+        }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      ),
+  );
+
+  await assert.rejects(request('/households', { method: 'POST' }), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 422);
+    assert.equal(error.message, 'String should have at most 255 characters');
+    return true;
+  });
+});
+
+test('falls back without leaking an unknown error body', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(JSON.stringify({ message: 'internal secret' }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  );
+
+  await assert.rejects(request('/households', { method: 'POST' }), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 422);
+    assert.equal(error.message, 'API request failed: 422');
+    assert.equal(error.message.includes('internal secret'), false);
+    return true;
+  });
+});
+
+test('falls back when the error body is not JSON', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () => new Response('<html>gateway</html>', { status: 502 }),
+  );
+
+  await assert.rejects(request('/households'), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 502);
+    assert.equal(error.message, 'API request failed: 502');
+    return true;
+  });
+});
+
+test('getErrorMessage prefers a non-empty Error message and falls back otherwise', () => {
+  assert.equal(getErrorMessage(new ApiError(422, 'detalhe real'), 'fallback'), 'detalhe real');
+  assert.equal(getErrorMessage(new Error('   '), 'fallback'), 'fallback');
+  assert.equal(getErrorMessage('boom', 'fallback'), 'fallback');
+  assert.equal(getErrorMessage(null, 'fallback'), 'fallback');
+});
+
+test('serializes the body, forwards the token and returns the parsed JSON', async (context) => {
+  const calls = mockFetch(context, { status: 'ok' });
+
+  const response = await request<{ status: string }>('/thing', {
+    method: 'POST',
+    body: { name: 'Casa' },
+    token: 'access-1',
+  });
+
+  assert.equal(calls[0].url, `${API_URL}/thing`);
+  assert.equal(calls[0].init?.method, 'POST');
+
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers['Content-Type'], 'application/json');
+  assert.equal(headers.Authorization, 'Bearer access-1');
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { name: 'Casa' });
+  assert.deepEqual(response, { status: 'ok' });
 });

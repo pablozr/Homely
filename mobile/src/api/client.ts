@@ -1,84 +1,96 @@
 import { API_URL } from './config';
-import type { components, operations } from './types.generated';
 
-type HealthResponse = operations['health_check_health_get']['responses'][200]['content']['application/json'];
-type MagicLinkRequest = components['schemas']['MagicLinkRequestModel'];
-type ExchangeRequest = components['schemas']['ExchangeRequestModel'];
-type RefreshTokenRequest = components['schemas']['RefreshTokenRequestModel'];
-
-export type AuthUser = {
-  id: string;
-  fullname: string;
-  email: string;
-  role: string;
-  created_at: string | null;
-};
-
-export type AuthTokens = {
-  access_token: string;
-  refresh_token: string;
-};
-
-export type MessageResponse = {
-  message: string;
-  data: Record<string, never>;
-};
-
-export type ExchangeResponse = {
-  message: string;
-  data: AuthTokens & { user: AuthUser };
-};
-
-export type RefreshResponse = {
-  message: string;
-  data: AuthTokens;
-};
-
-export type MeResponse = {
-  data: { user: AuthUser };
-};
-
-type RequestOptions = {
-  method?: 'GET' | 'POST';
+export type RequestOptions = {
+  method?: 'GET' | 'POST' | 'PATCH';
   body?: unknown;
   token?: string;
+  headers?: Record<string, string>;
 };
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, token } = options;
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+function extractDetailMessage(detail: unknown): string | null {
+  if (typeof detail === 'string') {
+    const message = detail.trim();
+    return message.length > 0 ? message : null;
+  }
+
+  if (!Array.isArray(detail)) {
+    return null;
+  }
+
+  for (const item of detail) {
+    if (typeof item === 'string' && item.trim().length > 0) {
+      return item;
+    }
+
+    if (typeof item === 'object' && item !== null) {
+      const message = (item as { msg?: unknown }).msg;
+
+      if (typeof message === 'string' && message.trim().length > 0) {
+        return message;
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractErrorMessage(body: unknown, status: number): string {
+  const fallback = `API request failed: ${status}`;
+
+  if (typeof body !== 'object' || body === null) {
+    return fallback;
+  }
+
+  return extractDetailMessage((body as { detail?: unknown }).detail) ?? fallback;
+}
+
+async function readErrorBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+export function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+
+    if (message.length > 0) {
+      return message;
+    }
+  }
+
+  return fallback;
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, token, headers } = options;
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(token === undefined ? {} : { Authorization: `Bearer ${token}` }),
+      ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    const errorBody = await readErrorBody(response);
+
+    throw new ApiError(response.status, extractErrorMessage(errorBody, response.status));
   }
 
   return response.json() as Promise<T>;
 }
-
-export const api = {
-  health(): Promise<HealthResponse> {
-    return request<HealthResponse>('/health');
-  },
-  requestMagicLink(body: MagicLinkRequest): Promise<MessageResponse> {
-    return request<MessageResponse>('/auth/magic-link', { method: 'POST', body });
-  },
-  exchange(body: ExchangeRequest): Promise<ExchangeResponse> {
-    return request<ExchangeResponse>('/auth/exchange', { method: 'POST', body });
-  },
-  refresh(body: RefreshTokenRequest): Promise<RefreshResponse> {
-    return request<RefreshResponse>('/auth/refresh', { method: 'POST', body });
-  },
-  logout(body: RefreshTokenRequest): Promise<MessageResponse> {
-    return request<MessageResponse>('/auth/logout', { method: 'POST', body });
-  },
-  me(token: string): Promise<MeResponse> {
-    return request<MeResponse>('/auth/me', { token });
-  },
-};
