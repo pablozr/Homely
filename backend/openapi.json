@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "FastAPI Backend",
+    "title": "Homely API",
     "version": "0.1.0"
   },
   "paths": {
@@ -185,6 +185,201 @@
         ]
       }
     },
+    "/profile/me": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Get Profile",
+        "operationId": "get_profile_profile_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Update Profile",
+        "operationId": "update_profile_profile_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdateRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/households": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Create Household",
+        "operationId": "create_household_households_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HouseholdCreateRequestModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdCreatedResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "List Households",
+        "operationId": "list_households_households_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdsResponseModel"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/selection": {
+      "patch": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Select Household",
+        "operationId": "select_household_households__household_id__selection_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdSelectionResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -240,6 +435,184 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HouseholdCreateRequestModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "timezone"
+        ],
+        "title": "HouseholdCreateRequestModel"
+      },
+      "HouseholdCreatedDataModel": {
+        "properties": {
+          "household": {
+            "$ref": "#/components/schemas/HouseholdSummaryModel"
+          },
+          "selected_household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Selected Household Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "household",
+          "selected_household_id"
+        ],
+        "title": "HouseholdCreatedDataModel"
+      },
+      "HouseholdCreatedResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HouseholdCreatedDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "HouseholdCreatedResponseModel"
+      },
+      "HouseholdSelectionDataModel": {
+        "properties": {
+          "selected_household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Selected Household Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "selected_household_id"
+        ],
+        "title": "HouseholdSelectionDataModel"
+      },
+      "HouseholdSelectionResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HouseholdSelectionDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "HouseholdSelectionResponseModel"
+      },
+      "HouseholdSummaryModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "default_due_time": {
+            "type": "string",
+            "title": "Default Due Time"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "joined_at": {
+            "type": "string",
+            "title": "Joined At"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "timezone",
+          "default_due_time",
+          "role",
+          "joined_at",
+          "created_at"
+        ],
+        "title": "HouseholdSummaryModel"
+      },
+      "HouseholdsDataModel": {
+        "properties": {
+          "households": {
+            "items": {
+              "$ref": "#/components/schemas/HouseholdSummaryModel"
+            },
+            "type": "array",
+            "title": "Households"
+          },
+          "selected_household_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Household Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "households",
+          "selected_household_id"
+        ],
+        "title": "HouseholdsDataModel"
+      },
+      "HouseholdsResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HouseholdsDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "HouseholdsResponseModel"
+      },
       "MagicLinkRequestModel": {
         "properties": {
           "email": {
@@ -252,6 +625,21 @@
           "email"
         ],
         "title": "MagicLinkRequestModel"
+      },
+      "ProfileUpdateRequestModel": {
+        "properties": {
+          "fullname": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Fullname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fullname"
+        ],
+        "title": "ProfileUpdateRequestModel"
       },
       "RefreshTokenRequestModel": {
         "properties": {
