@@ -197,6 +197,7 @@ class ExchangeTests(unittest.IsolatedAsyncioTestCase):
                     "email": "new@example.com",
                     "role": "BASIC",
                     "created_at": datetime.now(timezone.utc),
+                    "profile_completed_at": None,
                 },
             ]
         )
@@ -212,6 +213,7 @@ class ExchangeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["status"])
         self.assertEqual(result["status_code"], 200)
         self.assertEqual(result["data"]["user"]["email"], "new@example.com")
+        self.assertFalse(result["data"]["user"]["profile_completed"])
         self.assertEqual(result["data"]["access_token"], "access-token")
         self.assertEqual(result["data"]["refresh_token"], "refresh-token")
 
@@ -222,7 +224,11 @@ class ExchangeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(consume.args[1], hash_magic_link_code("raw-code"))
 
         create_user = connection.fetchrow.await_args_list[2]
-        self.assertIn("INSERT INTO users", create_user.args[0])
+        self.assertIn("INSERT INTO users (id, fullname, email)", create_user.args[0])
+        self.assertIn(
+            "RETURNING id, fullname, email, role, created_at, profile_completed_at",
+            create_user.args[0],
+        )
         self.assertEqual(create_user.args[2], "new")
         self.assertEqual(create_user.args[3], "new@example.com")
         self.assertNotIn("password", create_user.args[0])
@@ -258,6 +264,7 @@ class ExchangeTests(unittest.IsolatedAsyncioTestCase):
                     "email": "existing@example.com",
                     "role": "BASIC",
                     "created_at": datetime.now(timezone.utc),
+                    "profile_completed_at": datetime.now(timezone.utc),
                 },
             ]
         )
@@ -271,6 +278,7 @@ class ExchangeTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result["status"])
+        self.assertTrue(result["data"]["user"]["profile_completed"])
         self.assertEqual(connection.fetchrow.await_count, 2)
         self.assertFalse(
             any(

@@ -32,5 +32,6 @@ def user_from_row(row) -> dict:
         "fullname": row["fullname"],
         "email": row["email"],
         "role": row["role"],
+        "profile_completed": row["profile_completed_at"] is not None,
         "created_at": created_at.isoformat() if created_at else None,
     }

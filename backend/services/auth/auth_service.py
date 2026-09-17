@@ -187,7 +187,7 @@ async def exchange(
             email = consumed["email"]
             row = await conn.fetchrow(
                 """
-                SELECT id, fullname, email, role, created_at
+                SELECT id, fullname, email, role, created_at, profile_completed_at
                 FROM users WHERE email = $1
                 """,
                 email,
@@ -198,7 +198,7 @@ async def exchange(
                     """
                     INSERT INTO users (id, fullname, email)
                     VALUES ($1, $2, $3)
-                    RETURNING id, fullname, email, role, created_at
+                    RETURNING id, fullname, email, role, created_at, profile_completed_at
                     """,
                     uuid4(),
                     email.split("@", 1)[0],

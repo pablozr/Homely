@@ -64,7 +64,7 @@ async def verify_token(
 
         row = await conn.fetchrow(
             """
-            SELECT id, fullname, email, role, created_at
+            SELECT id, fullname, email, role, created_at, profile_completed_at
             FROM users WHERE id = $1
             """,
             user_id,

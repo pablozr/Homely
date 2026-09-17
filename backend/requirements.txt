@@ -4,3 +4,5 @@ pydantic-settings
 asyncpg
 PyJWT
 alembic
+tzdata
+httpx2

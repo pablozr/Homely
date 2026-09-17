@@ -8,6 +8,7 @@ from schemas.auth import (
     ExchangeRequestModel,
     MagicLinkRequestModel,
     RefreshTokenRequestModel,
+    user_from_row,
 )
 from services.auth import auth_service
 
@@ -61,4 +62,4 @@ async def logout(
 
 @router.get("/me")
 async def me(user: dict = Depends(auth.validate_token_wrapper)):
-    return {"data": {"user": user}}
+    return {"data": {"user": user_from_row(user)}}
