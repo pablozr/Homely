@@ -9,6 +9,7 @@ import jwt
 
 from core.config.config import settings
 from core.logger.logger import logger
+from repositories import auth_repository
 
 
 def decode_access_token(token: str) -> dict:
@@ -75,13 +76,7 @@ async def verify_token(
         except (TypeError, ValueError) as exc:
             raise jwt.InvalidTokenError("Invalid token payload") from exc
 
-        row = await conn.fetchrow(
-            """
-            SELECT id, fullname, email, role, created_at, profile_completed_at
-            FROM users WHERE id = $1
-            """,
-            user_id,
-        )
+        row = await auth_repository.find_access_token_user(conn, user_id)
 
         if not row:
             raise jwt.InvalidSignatureError("User not found")

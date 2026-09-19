@@ -15,6 +15,7 @@ from core.security.security import (
     hash_magic_link_code,
     hash_refresh_token,
 )
+from repositories import auth_repository
 from schemas.auth import ExchangeRequestModel, MagicLinkRequestModel, user_from_row
 
 
@@ -36,22 +37,12 @@ async def request_magic_link(
         )
 
         async with conn.transaction():
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-                f"email:{data.email}",
-            )
+            await auth_repository.acquire_advisory_lock(conn, f"email:{data.email}")
             if client_ip:
-                await conn.execute(
-                    "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-                    f"ip:{client_ip}",
-                )
+                await auth_repository.acquire_advisory_lock(conn, f"ip:{client_ip}")
 
-            email_requests = await conn.fetchval(
-                """
-                SELECT count(*)
-                FROM magic_link_codes
-                WHERE email = $1 AND created_at > $2
-                """,
+            email_requests = await auth_repository.count_magic_link_requests_by_email(
+                conn,
                 data.email,
                 email_window_start,
             )
@@ -64,12 +55,8 @@ async def request_magic_link(
                 }
 
             if client_ip:
-                ip_requests = await conn.fetchval(
-                    """
-                    SELECT count(*)
-                    FROM magic_link_codes
-                    WHERE requested_ip = $1 AND created_at > $2
-                    """,
+                ip_requests = await auth_repository.count_magic_link_requests_by_ip(
+                    conn,
                     client_ip,
                     ip_window_start,
                 )
@@ -82,11 +69,8 @@ async def request_magic_link(
                     }
 
             code_id = uuid4()
-            await conn.execute(
-                """
-                INSERT INTO magic_link_codes (id, email, code_hash, requested_ip, expires_at)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
+            await auth_repository.insert_magic_link_code(
+                conn,
                 code_id,
                 data.email,
                 code_hash,
@@ -98,16 +82,9 @@ async def request_magic_link(
         await asyncio.to_thread(send_magic_link_email, data.email, magic_link)
 
         async with conn.transaction():
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-                f"email:{data.email}",
-            )
-            await conn.execute(
-                """
-                UPDATE magic_link_codes
-                SET used_at = now()
-                WHERE email = $1 AND id != $2 AND used_at IS NULL
-                """,
+            await auth_repository.acquire_advisory_lock(conn, f"email:{data.email}")
+            await auth_repository.invalidate_magic_link_codes_for_email(
+                conn,
                 data.email,
                 code_id,
             )
@@ -138,17 +115,11 @@ async def exchange(
 
         async with conn.transaction():
             if client_ip:
-                await conn.execute(
-                    "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-                    f"exchange-ip:{client_ip}",
+                await auth_repository.acquire_advisory_lock(
+                    conn, f"exchange-ip:{client_ip}"
                 )
-                attempts = await conn.fetchval(
-                    """
-                    SELECT count(*)
-                    FROM magic_link_exchange_attempts
-                    WHERE requested_ip = $1
-                      AND created_at > now() - ($2 * interval '1 minute')
-                    """,
+                attempts = await auth_repository.count_exchange_attempts_by_ip(
+                    conn,
                     client_ip,
                     settings.MAGIC_LINK_EXCHANGE_IP_RATE_WINDOW_MINUTES,
                 )
@@ -159,22 +130,12 @@ async def exchange(
                         "message": "Too many exchange attempts",
                         "data": {},
                     }
-                await conn.execute(
-                    "INSERT INTO magic_link_exchange_attempts (id, requested_ip) VALUES ($1, $2)",
+                await auth_repository.insert_exchange_attempt(
+                    conn,
                     uuid4(),
                     client_ip,
                 )
-            consumed = await conn.fetchrow(
-                """
-                UPDATE magic_link_codes
-                SET used_at = now()
-                WHERE code_hash = $1
-                  AND used_at IS NULL
-                  AND expires_at > now()
-                RETURNING email
-                """,
-                code_hash,
-            )
+            consumed = await auth_repository.consume_magic_link_code(conn, code_hash)
 
             if not consumed:
                 return {
@@ -185,21 +146,11 @@ async def exchange(
                 }
 
             email = consumed["email"]
-            row = await conn.fetchrow(
-                """
-                SELECT id, fullname, email, role, created_at, profile_completed_at
-                FROM users WHERE email = $1
-                """,
-                email,
-            )
+            row = await auth_repository.find_auth_user_by_email(conn, email)
 
             if not row:
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO users (id, fullname, email)
-                    VALUES ($1, $2, $3)
-                    RETURNING id, fullname, email, role, created_at, profile_completed_at
-                    """,
+                row = await auth_repository.create_auth_user(
+                    conn,
                     uuid4(),
                     email.split("@", 1)[0],
                     email,
@@ -213,11 +164,8 @@ async def exchange(
             refresh_expires_at = datetime.now(timezone.utc) + timedelta(
                 days=settings.REFRESH_TOKEN_EXPIRE_DAYS
             )
-            await conn.execute(
-                """
-                INSERT INTO refresh_sessions (token_hash, family_id, user_id, expires_at)
-                VALUES ($1, $2, $3, $4)
-                """,
+            await auth_repository.insert_refresh_session(
+                conn,
                 hash_refresh_token(refresh_token),
                 uuid4(),
                 row["id"],
@@ -257,14 +205,7 @@ async def refresh(conn: asyncpg.Connection, refresh_token: str | None) -> dict:
 
     try:
         async with conn.transaction():
-            session = await conn.fetchrow(
-                """
-                SELECT user_id, family_id, expires_at, revoked_at
-                FROM refresh_sessions
-                WHERE token_hash = $1
-                """,
-                token_hash,
-            )
+            session = await auth_repository.find_refresh_session(conn, token_hash)
 
             if not session:
                 return {
@@ -274,27 +215,18 @@ async def refresh(conn: asyncpg.Connection, refresh_token: str | None) -> dict:
                     "data": {},
                 }
 
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            await auth_repository.acquire_advisory_lock(
+                conn,
                 str(session["family_id"]),
             )
-            session = await conn.fetchrow(
-                """
-                SELECT user_id, family_id, expires_at, revoked_at
-                FROM refresh_sessions
-                WHERE token_hash = $1
-                FOR UPDATE
-                """,
+            session = await auth_repository.find_refresh_session_for_update(
+                conn,
                 token_hash,
             )
 
             if session["revoked_at"]:
-                await conn.execute(
-                    """
-                    UPDATE refresh_sessions
-                    SET revoked_at = now()
-                    WHERE family_id = $1 AND revoked_at IS NULL
-                    """,
+                await auth_repository.revoke_refresh_session_family(
+                    conn,
                     session["family_id"],
                 )
                 return {
@@ -305,14 +237,7 @@ async def refresh(conn: asyncpg.Connection, refresh_token: str | None) -> dict:
                 }
 
             if session["expires_at"] <= datetime.now(timezone.utc):
-                await conn.execute(
-                    """
-                    UPDATE refresh_sessions
-                    SET revoked_at = now()
-                    WHERE token_hash = $1
-                    """,
-                    token_hash,
-                )
+                await auth_repository.revoke_refresh_session(conn, token_hash)
                 return {
                     "status": False,
                     "status_code": 401,
@@ -320,23 +245,13 @@ async def refresh(conn: asyncpg.Connection, refresh_token: str | None) -> dict:
                     "data": {},
                 }
 
-            row = await conn.fetchrow(
-                """
-                SELECT id, fullname, email, role, created_at
-                FROM users WHERE id = $1
-                """,
+            row = await auth_repository.find_auth_user_by_id(
+                conn,
                 session["user_id"],
             )
 
             if not row:
-                await conn.execute(
-                    """
-                    UPDATE refresh_sessions
-                    SET revoked_at = now()
-                    WHERE token_hash = $1
-                    """,
-                    token_hash,
-                )
+                await auth_repository.revoke_refresh_session(conn, token_hash)
                 return {
                     "status": False,
                     "status_code": 401,
@@ -353,20 +268,13 @@ async def refresh(conn: asyncpg.Connection, refresh_token: str | None) -> dict:
             next_expires_at = datetime.now(timezone.utc) + timedelta(
                 days=settings.REFRESH_TOKEN_EXPIRE_DAYS
             )
-            await conn.execute(
-                """
-                UPDATE refresh_sessions
-                SET revoked_at = now(), replaced_by_token_hash = $2
-                WHERE token_hash = $1
-                """,
+            await auth_repository.rotate_refresh_session(
+                conn,
                 token_hash,
                 next_token_hash,
             )
-            await conn.execute(
-                """
-                INSERT INTO refresh_sessions (token_hash, family_id, user_id, expires_at)
-                VALUES ($1, $2, $3, $4)
-                """,
+            await auth_repository.insert_refresh_session(
+                conn,
                 next_token_hash,
                 session["family_id"],
                 session["user_id"],
@@ -397,26 +305,18 @@ async def logout(conn: asyncpg.Connection, refresh_token: str | None) -> dict:
         try:
             token_hash = hash_refresh_token(refresh_token)
             async with conn.transaction():
-                session = await conn.fetchrow(
-                    """
-                    SELECT family_id
-                    FROM refresh_sessions
-                    WHERE token_hash = $1
-                    """,
+                session = await auth_repository.find_refresh_session_family(
+                    conn,
                     token_hash,
                 )
 
                 if session:
-                    await conn.execute(
-                        "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+                    await auth_repository.acquire_advisory_lock(
+                        conn,
                         str(session["family_id"]),
                     )
-                    await conn.execute(
-                        """
-                        UPDATE refresh_sessions
-                        SET revoked_at = now()
-                        WHERE family_id = $1 AND revoked_at IS NULL
-                        """,
+                    await auth_repository.revoke_refresh_session_family(
+                        conn,
                         session["family_id"],
                     )
         except Exception as exc:

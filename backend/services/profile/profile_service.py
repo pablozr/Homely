@@ -1,18 +1,13 @@
 import asyncpg
 
 from core.logger.logger import logger
+from repositories import profile_repository
 from schemas.profile import ProfileUpdateRequestModel, profile_from_row
 
 
 async def get_profile(conn: asyncpg.Connection, user_id) -> dict:
     try:
-        row = await conn.fetchrow(
-            """
-            SELECT id, fullname, role, created_at, profile_completed_at
-            FROM users WHERE id = $1
-            """,
-            user_id,
-        )
+        row = await profile_repository.find_profile(conn, user_id)
 
         if not row:
             return {
@@ -44,14 +39,8 @@ async def update_profile(
     data: ProfileUpdateRequestModel,
 ) -> dict:
     try:
-        row = await conn.fetchrow(
-            """
-            UPDATE users
-            SET fullname = $2,
-                profile_completed_at = COALESCE(profile_completed_at, now())
-            WHERE id = $1
-            RETURNING id, fullname, role, created_at, profile_completed_at
-            """,
+        row = await profile_repository.update_profile_completion(
+            conn,
             user_id,
             data.fullname,
         )
