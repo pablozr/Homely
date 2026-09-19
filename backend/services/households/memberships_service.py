@@ -4,6 +4,7 @@ from uuid import uuid4
 import asyncpg
 
 from core.logger.logger import logger
+from repositories.households import memberships_repository
 from schemas.households import member_from_row
 from services.households import households_service
 
@@ -16,17 +17,7 @@ TRANSFER_MESSAGE = "Ownership transferred"
 
 async def list_members(conn: asyncpg.Connection, household_id) -> dict:
     try:
-        rows = await conn.fetch(
-            """
-            SELECT hm.id, hm.user_id, u.fullname, hm.role, hm.status, hm.joined_at
-            FROM household_members hm
-            JOIN users u ON u.id = hm.user_id
-            WHERE hm.household_id = $1
-              AND hm.status = 'ACTIVE'
-            ORDER BY hm.joined_at, hm.id
-            """,
-            household_id,
-        )
+        rows = await memberships_repository.list_active_members(conn, household_id)
 
         return {
             "status": True,
@@ -58,13 +49,8 @@ async def remove_member(
             if error:
                 return error
 
-            target = await conn.fetchrow(
-                """
-                SELECT id, user_id, role, status
-                FROM household_members
-                WHERE id = $1 AND household_id = $2
-                FOR UPDATE
-                """,
+            target = await memberships_repository.lock_removal_target(
+                conn,
                 membership_id,
                 household_id,
             )
@@ -85,28 +71,12 @@ async def remove_member(
                     "data": {},
                 }
 
-            removed_at = await conn.fetchval(
-                """
-                UPDATE household_members
-                SET status = 'INACTIVE', left_at = now()
-                WHERE id = $1
-                RETURNING left_at
-                """,
+            removed_at = await memberships_repository.deactivate_membership(
+                conn,
                 membership_id,
             )
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household_member', $4, 'MEMBER_REMOVED', $5::jsonb)
-                """,
+            await memberships_repository.insert_member_removed_event(
+                conn,
                 uuid4(),
                 household_id,
                 actor_user_id,
@@ -156,28 +126,12 @@ async def leave_household(conn: asyncpg.Connection, user_id, household_id) -> di
                     "data": {},
                 }
 
-            left_at = await conn.fetchval(
-                """
-                UPDATE household_members
-                SET status = 'INACTIVE', left_at = now()
-                WHERE id = $1
-                RETURNING left_at
-                """,
+            left_at = await memberships_repository.deactivate_membership(
+                conn,
                 context["membership_id"],
             )
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household_member', $4, 'MEMBER_LEFT', $5::jsonb)
-                """,
+            await memberships_repository.insert_member_left_event(
+                conn,
                 uuid4(),
                 household_id,
                 user_id,
@@ -221,13 +175,8 @@ async def transfer_ownership(
             if error:
                 return error
 
-            target = await conn.fetchrow(
-                """
-                SELECT id, role, status
-                FROM household_members
-                WHERE id = $1 AND household_id = $2
-                FOR UPDATE
-                """,
+            target = await memberships_repository.lock_transfer_target(
+                conn,
                 target_membership_id,
                 household_id,
             )
@@ -248,35 +197,16 @@ async def transfer_ownership(
                     "data": {},
                 }
 
-            await conn.execute(
-                """
-                UPDATE household_members
-                SET role = 'MEMBER'
-                WHERE id = $1
-                """,
+            await memberships_repository.demote_membership_to_member(
+                conn,
                 context["membership_id"],
             )
-            await conn.execute(
-                """
-                UPDATE household_members
-                SET role = 'OWNER'
-                WHERE id = $1
-                """,
+            await memberships_repository.promote_membership_to_owner(
+                conn,
                 target["id"],
             )
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household_member', $4, 'OWNERSHIP_TRANSFERRED', $5::jsonb)
-                """,
+            await memberships_repository.insert_ownership_transferred_event(
+                conn,
                 uuid4(),
                 household_id,
                 actor_user_id,

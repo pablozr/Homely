@@ -5,6 +5,7 @@ from fastapi import Depends, Header, HTTPException
 
 from core.postgresql.postgresql import postgresql
 from dependencies import auth
+from repositories.households import households_repository
 
 IDEMPOTENCY_KEY_MAX_LENGTH = 255
 
@@ -28,19 +29,8 @@ async def require_active_membership(
     user: dict = Depends(auth.validate_token_wrapper),
     conn: asyncpg.Connection = Depends(postgresql.get_db),
 ) -> dict:
-    row = await conn.fetchrow(
-        """
-        SELECT h.id AS household_id,
-               h.deactivated_at,
-               hm.id AS membership_id,
-               hm.role
-        FROM households h
-        LEFT JOIN household_members hm
-               ON hm.household_id = h.id
-              AND hm.user_id = $2
-              AND hm.status = 'ACTIVE'
-        WHERE h.id = $1
-        """,
+    row = await households_repository.find_membership_context(
+        conn,
         household_id,
         user["id"],
     )

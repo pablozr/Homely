@@ -6,6 +6,7 @@ from uuid import uuid4
 import asyncpg
 
 from core.logger.logger import logger
+from repositories.households import households_repository
 from schemas.households import (
     HouseholdCreateRequestModel,
     household_summary_from_row,
@@ -38,20 +39,13 @@ async def create_household(
         fingerprint = payload_fingerprint(data)
 
         async with conn.transaction():
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            await households_repository.acquire_idempotency_lock(
+                conn,
                 f"{OPERATION_CREATE}:{user_id}:{idempotency_key}",
             )
 
-            record = await conn.fetchrow(
-                """
-                SELECT fingerprint, response_status, response_data, expires_at
-                FROM idempotency_records
-                WHERE user_id = $1
-                  AND household_id IS NULL
-                  AND operation = $2
-                  AND idempotency_key = $3
-                """,
+            record = await households_repository.find_idempotency_record(
+                conn,
                 user_id,
                 OPERATION_CREATE,
                 idempotency_key,
@@ -76,40 +70,21 @@ async def create_household(
             household_id = uuid4()
             membership_id = uuid4()
 
-            household = await conn.fetchrow(
-                """
-                INSERT INTO households (id, name, timezone, created_by)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, name, timezone, default_due_time, created_at
-                """,
+            household = await households_repository.insert_household(
+                conn,
                 household_id,
                 data.name,
                 data.timezone,
                 user_id,
             )
-            membership = await conn.fetchrow(
-                """
-                INSERT INTO household_members (id, household_id, user_id, role, status)
-                VALUES ($1, $2, $3, 'OWNER', 'ACTIVE')
-                RETURNING joined_at
-                """,
+            membership = await households_repository.insert_owner_membership(
+                conn,
                 membership_id,
                 household_id,
                 user_id,
             )
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household', $4, 'HOUSEHOLD_CREATED', $5::jsonb)
-                """,
+            await households_repository.insert_household_created_event(
+                conn,
                 uuid4(),
                 household_id,
                 user_id,
@@ -119,8 +94,8 @@ async def create_household(
                     separators=(",", ":"),
                 ),
             )
-            await conn.execute(
-                "UPDATE users SET last_household_id = $2 WHERE id = $1",
+            await households_repository.update_user_last_household(
+                conn,
                 user_id,
                 household_id,
             )
@@ -131,32 +106,8 @@ async def create_household(
                 ),
                 "selected_household_id": str(household_id),
             }
-            await conn.execute(
-                """
-                INSERT INTO idempotency_records (
-                    id,
-                    user_id,
-                    household_id,
-                    operation,
-                    idempotency_key,
-                    fingerprint,
-                    payload,
-                    resource_id,
-                    response_status,
-                    response_data,
-                    expires_at
-                )
-                VALUES ($1, $2, NULL, $3, $4, $5, $6::jsonb, $7, 201, $8::jsonb, $9)
-                ON CONFLICT ON CONSTRAINT uq_idempotency_records_scope
-                DO UPDATE SET
-                    fingerprint = EXCLUDED.fingerprint,
-                    payload = EXCLUDED.payload,
-                    resource_id = EXCLUDED.resource_id,
-                    response_status = EXCLUDED.response_status,
-                    response_data = EXCLUDED.response_data,
-                    created_at = now(),
-                    expires_at = EXCLUDED.expires_at
-                """,
+            await households_repository.upsert_idempotency_record(
+                conn,
                 uuid4(),
                 user_id,
                 OPERATION_CREATE,
@@ -189,26 +140,7 @@ async def create_household(
 
 async def list_households(conn: asyncpg.Connection, user_id) -> dict:
     try:
-        rows = await conn.fetch(
-            """
-            SELECT h.id,
-                   h.name,
-                   h.timezone,
-                   h.default_due_time,
-                   h.created_at,
-                   hm.role,
-                   hm.joined_at,
-                   u.last_household_id
-            FROM household_members hm
-            JOIN households h ON h.id = hm.household_id
-            JOIN users u ON u.id = hm.user_id
-            WHERE hm.user_id = $1
-              AND hm.status = 'ACTIVE'
-              AND h.deactivated_at IS NULL
-            ORDER BY hm.joined_at DESC, h.id
-            """,
-            user_id,
-        )
+        rows = await households_repository.list_user_households(conn, user_id)
 
         selected_household_id = None
         if len(rows) == 1:
@@ -244,13 +176,8 @@ async def list_households(conn: asyncpg.Connection, user_id) -> dict:
 
 async def select_household(conn: asyncpg.Connection, user_id, household_id) -> dict:
     try:
-        row = await conn.fetchrow(
-            """
-            UPDATE users
-            SET last_household_id = $2
-            WHERE id = $1
-            RETURNING last_household_id
-            """,
+        row = await households_repository.set_selected_household(
+            conn,
             user_id,
             household_id,
         )
@@ -285,10 +212,7 @@ async def lock_active_membership(
     user_id,
     required_role: str | None = None,
 ) -> tuple[dict | None, dict | None]:
-    household = await conn.fetchrow(
-        "SELECT id, deactivated_at FROM households WHERE id = $1 FOR UPDATE",
-        household_id,
-    )
+    household = await households_repository.lock_household(conn, household_id)
 
     if not household:
         return None, {
@@ -306,15 +230,8 @@ async def lock_active_membership(
             "data": {},
         }
 
-    membership = await conn.fetchrow(
-        """
-        SELECT id, role
-        FROM household_members
-        WHERE household_id = $1
-          AND user_id = $2
-          AND status = 'ACTIVE'
-        FOR UPDATE
-        """,
+    membership = await households_repository.lock_active_membership(
+        conn,
         household_id,
         user_id,
     )
