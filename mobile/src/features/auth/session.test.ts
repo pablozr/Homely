@@ -6,7 +6,12 @@ import { QueryClient } from '@tanstack/react-query';
 import { clearHouseholdCache, householdsQueryKey, queryClient } from '@/lib/query-client';
 import { useActiveHouseholdStore } from '@/stores/active-household';
 import { useSessionStore } from '@/stores/session';
-import { establishSessionFromCode, restoreSession, signOut } from './session';
+import {
+  establishSessionFromCode,
+  restoreSession,
+  runAfterSessionOperations,
+  signOut,
+} from './session';
 
 const user = {
   id: 'u1',
@@ -191,6 +196,34 @@ test('serializes a deep link exchange before session restoration', async (contex
   assert.equal(calls[1].url.endsWith('/auth/refresh'), true);
   assert.equal(store.current(), 'refresh-2');
   assert.equal(useSessionStore.getState().status, 'authenticated');
+});
+
+test('serializes invite acceptance after a deep link exchange', async (context) => {
+  resetSession();
+
+  const store = createTokenStore(null);
+  const order: string[] = [];
+
+  context.mock.method(globalThis, 'fetch', async (...args: Parameters<typeof fetch>) => {
+    if (String(args[0]).endsWith('/auth/exchange')) {
+      order.push('exchange');
+      return jsonResponse({
+        message: 'Session created',
+        data: { user, access_token: 'access-1', refresh_token: 'refresh-1' },
+      });
+    }
+
+    return jsonResponse({ data: { user } });
+  });
+
+  await Promise.all([
+    establishSessionFromCode('code-1', store),
+    runAfterSessionOperations(async () => {
+      order.push('invite');
+    }),
+  ]);
+
+  assert.deepEqual(order, ['exchange', 'invite']);
 });
 
 test('signOut revokes the refresh token and clears the local session', async (context) => {

@@ -142,6 +142,126 @@ export interface paths {
         patch: operations["select_household_households__household_id__selection_patch"];
         trace?: never;
     };
+    "/households/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Invite */
+        post: operations["accept_invite_households_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Invites */
+        get: operations["list_invites_households__household_id__invites_get"];
+        put?: never;
+        /** Create Invite */
+        post: operations["create_invite_households__household_id__invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/invites/{invite_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Invite */
+        post: operations["revoke_invite_households__household_id__invites__invite_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Members */
+        get: operations["list_members_households__household_id__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/members/{membership_id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove Member */
+        post: operations["remove_member_households__household_id__members__membership_id__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave Household */
+        post: operations["leave_household_households__household_id__leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transfer Ownership */
+        post: operations["transfer_ownership_households__household_id__ownership_transfer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -195,6 +315,22 @@ export interface components {
             message: string;
             data: components["schemas"]["HouseholdCreatedDataModel"];
         };
+        /** HouseholdLeaveDataModel */
+        HouseholdLeaveDataModel: {
+            /**
+             * Household Id
+             * Format: uuid
+             */
+            household_id: string;
+            /** Left At */
+            left_at: string;
+        };
+        /** HouseholdLeaveResponseModel */
+        HouseholdLeaveResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["HouseholdLeaveDataModel"];
+        };
         /** HouseholdSelectionDataModel */
         HouseholdSelectionDataModel: {
             /**
@@ -242,10 +378,205 @@ export interface components {
             message: string;
             data: components["schemas"]["HouseholdsDataModel"];
         };
+        /** InviteAcceptDataModel */
+        InviteAcceptDataModel: {
+            household: components["schemas"]["HouseholdSummaryModel"];
+            membership: components["schemas"]["MembershipModel"];
+            /** Membership Created */
+            membership_created: boolean;
+            /**
+             * Selected Household Id
+             * Format: uuid
+             */
+            selected_household_id: string;
+        };
+        /** InviteAcceptRequestModel */
+        InviteAcceptRequestModel: {
+            /** Invite Token */
+            invite_token: string;
+        };
+        /** InviteAcceptResponseModel */
+        InviteAcceptResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["InviteAcceptDataModel"];
+        };
+        /** InviteCreatedDataModel */
+        InviteCreatedDataModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Household Id
+             * Format: uuid
+             */
+            household_id: string;
+            /** Created At */
+            created_at: string;
+            /** Expires At */
+            expires_at: string;
+            /** Invite Url */
+            invite_url: string;
+        };
+        /** InviteCreatedResponseModel */
+        InviteCreatedResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["InviteCreatedDataModel"];
+        };
+        /** InviteModel */
+        InviteModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Household Id
+             * Format: uuid
+             */
+            household_id: string;
+            /** Created At */
+            created_at: string;
+            /** Expires At */
+            expires_at: string;
+        };
+        /** InviteRevokeDataModel */
+        InviteRevokeDataModel: {
+            /**
+             * Invite Id
+             * Format: uuid
+             */
+            invite_id: string;
+            /** Revoked At */
+            revoked_at: string;
+        };
+        /** InviteRevokeResponseModel */
+        InviteRevokeResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["InviteRevokeDataModel"];
+        };
+        /** InvitesDataModel */
+        InvitesDataModel: {
+            /** Invites */
+            invites: components["schemas"]["InviteModel"][];
+        };
+        /** InvitesResponseModel */
+        InvitesResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["InvitesDataModel"];
+        };
         /** MagicLinkRequestModel */
         MagicLinkRequestModel: {
             /** Email */
             email: string;
+        };
+        /** MemberModel */
+        MemberModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Role */
+            role: string;
+            /** Status */
+            status: string;
+            /** Joined At */
+            joined_at: string;
+            /** Fullname */
+            fullname: string;
+        };
+        /** MembershipModel */
+        MembershipModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Role */
+            role: string;
+            /** Status */
+            status: string;
+            /** Joined At */
+            joined_at: string;
+        };
+        /** MembershipRemovedDataModel */
+        MembershipRemovedDataModel: {
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /** Removed At */
+            removed_at: string;
+        };
+        /** MembershipRemovedResponseModel */
+        MembershipRemovedResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["MembershipRemovedDataModel"];
+        };
+        /** MembershipsDataModel */
+        MembershipsDataModel: {
+            /** Memberships */
+            memberships: components["schemas"]["MemberModel"][];
+        };
+        /** MembershipsResponseModel */
+        MembershipsResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["MembershipsDataModel"];
+        };
+        /** OwnershipTransferDataModel */
+        OwnershipTransferDataModel: {
+            /**
+             * Household Id
+             * Format: uuid
+             */
+            household_id: string;
+            /**
+             * Previous Owner Membership Id
+             * Format: uuid
+             */
+            previous_owner_membership_id: string;
+            /** Previous Owner Role */
+            previous_owner_role: string;
+            /**
+             * New Owner Membership Id
+             * Format: uuid
+             */
+            new_owner_membership_id: string;
+            /** New Owner Role */
+            new_owner_role: string;
+        };
+        /** OwnershipTransferRequestModel */
+        OwnershipTransferRequestModel: {
+            /**
+             * Target Membership Id
+             * Format: uuid
+             */
+            target_membership_id: string;
+        };
+        /** OwnershipTransferResponseModel */
+        OwnershipTransferResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["OwnershipTransferDataModel"];
         };
         /** ProfileUpdateRequestModel */
         ProfileUpdateRequestModel: {
@@ -557,6 +888,264 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HouseholdSelectionResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_invite_households_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAcceptRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteAcceptResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invites_households__household_id__invites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitesResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invite_households__household_id__invites_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreatedResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_invite_households__household_id__invites__invite_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRevokeResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_households__household_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipsResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_member_households__household_id__members__membership_id__remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRemovedResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leave_household_households__household_id__leave_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdLeaveResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transfer_ownership_households__household_id__ownership_transfer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnershipTransferRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipTransferResponseModel"];
                 };
             };
             /** @description Validation Error */

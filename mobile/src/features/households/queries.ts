@@ -7,6 +7,14 @@ import type { HouseholdSummary, HouseholdsData, HouseholdsResponse } from './typ
 
 export { householdsQueryKey };
 
+export function householdMembersQueryKey(householdId: string) {
+  return ['households', householdId, 'members'] as const;
+}
+
+export function householdInvitesQueryKey(householdId: string) {
+  return ['households', householdId, 'invites'] as const;
+}
+
 export function useHouseholds() {
   const accessToken = useSessionStore((state) => state.accessToken);
 
@@ -21,6 +29,40 @@ export function useHouseholds() {
     },
 
     enabled: accessToken !== null,
+  });
+}
+
+export function useHouseholdMembers(householdId: string) {
+  const accessToken = useSessionStore((state) => state.accessToken);
+
+  return useQuery({
+    queryKey: householdMembersQueryKey(householdId),
+    queryFn: () => {
+      if (!accessToken) {
+        throw new Error('Missing access token');
+      }
+
+      return householdsApi.listMembers(accessToken, householdId);
+    },
+
+    enabled: accessToken !== null && householdId.length > 0,
+  });
+}
+
+export function useHouseholdInvites(householdId: string) {
+  const accessToken = useSessionStore((state) => state.accessToken);
+
+  return useQuery({
+    queryKey: householdInvitesQueryKey(householdId),
+    queryFn: () => {
+      if (!accessToken) {
+        throw new Error('Missing access token');
+      }
+
+      return householdsApi.listInvites(accessToken, householdId);
+    },
+
+    enabled: accessToken !== null && householdId.length > 0,
   });
 }
 

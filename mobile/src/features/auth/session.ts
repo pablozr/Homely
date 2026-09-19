@@ -4,12 +4,20 @@ import { useActiveHouseholdStore } from '@/stores/active-household';
 import { useSessionStore } from '@/stores/session';
 import { authApi } from './api';
 
-let sessionOperation = Promise.resolve();
+let sessionOperation: Promise<unknown> = Promise.resolve();
 
-function runSessionOperation(operation: () => Promise<void>): Promise<void> {
+function runSerializedOperation<T>(operation: () => Promise<T>): Promise<T> {
   const nextOperation = sessionOperation.then(operation, operation);
   sessionOperation = nextOperation.catch(() => undefined);
   return nextOperation;
+}
+
+function runSessionOperation(operation: () => Promise<void>): Promise<void> {
+  return runSerializedOperation(operation);
+}
+
+export function runAfterSessionOperations<T>(operation: () => Promise<T>): Promise<T> {
+  return runSerializedOperation(operation);
 }
 
 async function exchangeCode(authCode: string, refreshTokens: TokenStore): Promise<void> {
