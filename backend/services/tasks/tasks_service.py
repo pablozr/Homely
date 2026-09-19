@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import asyncpg
 
 from core.logger.logger import logger
+from repositories import tasks_repository
 from schemas.tasks import (
     DUE_LOCAL_FORMAT,
     TaskCreateRequestModel,
@@ -27,33 +28,6 @@ ASSIGNEE_INVALID_MESSAGE = "Assignee must be an active member of the household"
 DUE_NOT_FUTURE_MESSAGE = "Due must be in the future"
 IDEMPOTENCY_CONFLICT_MESSAGE = "Idempotency key was reused with a different request"
 INTERNAL_ERROR_MESSAGE = "Internal server error"
-
-
-OCCURRENCE_SELECT = """
-SELECT o.id AS occurrence_id,
-       o.task_id,
-       o.household_id,
-       t.title,
-       o.status,
-       o.assignee_membership_id,
-       o.due_at,
-       o.due_timezone,
-       o.created_by,
-       o.created_at,
-       o.updated_at,
-       o.cancelled_at,
-       o.cancelled_by,
-       hm.user_id AS assignee_user_id,
-       u.fullname AS assignee_fullname
-FROM task_occurrences o
-JOIN tasks t
-  ON t.id = o.task_id
- AND t.household_id = o.household_id
-LEFT JOIN household_members hm
-  ON hm.id = o.assignee_membership_id
-LEFT JOIN users u
-  ON u.id = hm.user_id
-"""
 
 
 def payload_fingerprint(data: TaskCreateRequestModel) -> str:
@@ -90,64 +64,6 @@ def parse_due_local(value: str, timezone_name: str) -> datetime:
         candidate += timedelta(minutes=1)
 
 
-async def _lock_active_assignee(conn, household_id, membership_id):
-    return await conn.fetchrow(
-        """
-        SELECT hm.id AS membership_id, hm.user_id, u.fullname
-        FROM household_members hm
-        JOIN users u ON u.id = hm.user_id
-        WHERE hm.id = $1
-          AND hm.household_id = $2
-          AND hm.status = 'ACTIVE'
-        FOR UPDATE
-        """,
-        membership_id,
-        household_id,
-    )
-
-
-async def _fetch_occurrence(conn, occurrence_id, household_id):
-    return await conn.fetchrow(
-        OCCURRENCE_SELECT
-        + """
-        WHERE o.id = $1
-          AND o.household_id = $2
-        """,
-        occurrence_id,
-        household_id,
-    )
-
-
-async def _household_timezone(conn, household_id) -> str:
-    return await conn.fetchval(
-        "SELECT timezone FROM households WHERE id = $1",
-        household_id,
-    )
-
-
-async def _write_audit(conn, household_id, user_id, occurrence_id, event_type, metadata):
-    await conn.execute(
-        """
-        INSERT INTO activity_events (
-            id,
-            household_id,
-            actor_user_id,
-            entity_type,
-            entity_id,
-            event_type,
-            metadata
-        )
-        VALUES ($1, $2, $3, 'task_occurrence', $4, $5, $6::jsonb)
-        """,
-        uuid4(),
-        household_id,
-        user_id,
-        occurrence_id,
-        event_type,
-        json.dumps(metadata, separators=(",", ":")),
-    )
-
-
 def _error(status_code: int, message: str) -> dict:
     return {
         "status": False,
@@ -168,20 +84,13 @@ async def create_task(
         fingerprint = payload_fingerprint(data)
 
         async with conn.transaction():
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            await tasks_repository.acquire_idempotency_lock(
+                conn,
                 f"{OPERATION_CREATE_TASK}:{household_id}:{idempotency_key}",
             )
 
-            record = await conn.fetchrow(
-                """
-                SELECT fingerprint, response_status, response_data, expires_at
-                FROM idempotency_records
-                WHERE user_id = $1
-                  AND household_id = $2
-                  AND operation = $3
-                  AND idempotency_key = $4
-                """,
+            record = await tasks_repository.find_create_idempotency_record(
+                conn,
                 user_id,
                 household_id,
                 OPERATION_CREATE_TASK,
@@ -209,15 +118,19 @@ async def create_task(
             due_at = None
             due_timezone = None
             if data.due_local is not None:
-                timezone_name = await _household_timezone(conn, household_id)
+                timezone_name = await tasks_repository.find_household_timezone(
+                    conn, household_id
+                )
                 due_at = parse_due_local(data.due_local, timezone_name)
                 if due_at <= datetime.now(timezone.utc):
                     return _error(400, DUE_NOT_FUTURE_MESSAGE)
                 due_timezone = timezone_name
 
             if data.assignee_membership_id is not None:
-                assignee = await _lock_active_assignee(
-                    conn, household_id, data.assignee_membership_id
+                assignee = await tasks_repository.lock_active_assignee(
+                    conn,
+                    data.assignee_membership_id,
+                    household_id,
                 )
                 if assignee is None:
                     return _error(400, ASSIGNEE_INVALID_MESSAGE)
@@ -225,30 +138,15 @@ async def create_task(
             task_id = uuid4()
             occurrence_id = uuid4()
 
-            await conn.execute(
-                """
-                INSERT INTO tasks (id, household_id, title, created_by)
-                VALUES ($1, $2, $3, $4)
-                """,
+            await tasks_repository.insert_task(
+                conn,
                 task_id,
                 household_id,
                 data.title,
                 user_id,
             )
-            await conn.execute(
-                """
-                INSERT INTO task_occurrences (
-                    id,
-                    task_id,
-                    household_id,
-                    assignee_membership_id,
-                    due_at,
-                    due_timezone,
-                    status,
-                    created_by
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7)
-                """,
+            await tasks_repository.insert_task_occurrence(
+                conn,
                 occurrence_id,
                 task_id,
                 household_id,
@@ -257,47 +155,29 @@ async def create_task(
                 due_timezone,
                 user_id,
             )
-            await _write_audit(
+            await tasks_repository.insert_task_activity_event(
                 conn,
+                uuid4(),
                 household_id,
                 user_id,
                 occurrence_id,
                 "TASK_CREATED",
-                {
-                    "task_id": str(task_id),
-                    "occurrence_id": str(occurrence_id),
-                },
+                json.dumps(
+                    {
+                        "task_id": str(task_id),
+                        "occurrence_id": str(occurrence_id),
+                    },
+                    separators=(",", ":"),
+                ),
             )
 
-            row = await _fetch_occurrence(conn, occurrence_id, household_id)
+            row = await tasks_repository.find_occurrence(
+                conn, occurrence_id, household_id
+            )
             task = task_from_row(row)
 
-            await conn.execute(
-                """
-                INSERT INTO idempotency_records (
-                    id,
-                    user_id,
-                    household_id,
-                    operation,
-                    idempotency_key,
-                    fingerprint,
-                    payload,
-                    resource_id,
-                    response_status,
-                    response_data,
-                    expires_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, 201, $9::jsonb, $10)
-                ON CONFLICT ON CONSTRAINT uq_idempotency_records_scope
-                DO UPDATE SET
-                    fingerprint = EXCLUDED.fingerprint,
-                    payload = EXCLUDED.payload,
-                    resource_id = EXCLUDED.resource_id,
-                    response_status = EXCLUDED.response_status,
-                    response_data = EXCLUDED.response_data,
-                    created_at = now(),
-                    expires_at = EXCLUDED.expires_at
-                """,
+            await tasks_repository.upsert_task_idempotency_record(
+                conn,
                 uuid4(),
                 user_id,
                 household_id,
@@ -334,15 +214,7 @@ async def create_task(
 
 async def list_tasks(conn: asyncpg.Connection, household_id) -> dict:
     try:
-        rows = await conn.fetch(
-            OCCURRENCE_SELECT
-            + """
-            WHERE o.household_id = $1
-              AND o.status = 'PENDING'
-            ORDER BY o.due_at ASC NULLS LAST, o.created_at ASC, o.id ASC
-            """,
-            household_id,
-        )
+        rows = await tasks_repository.list_pending_occurrences(conn, household_id)
 
         return {
             "status": True,
@@ -370,18 +242,8 @@ async def update_task(
             if error:
                 return error
 
-            occurrence = await conn.fetchrow(
-                """
-                SELECT id,
-                       task_id,
-                       status,
-                       assignee_membership_id,
-                       due_at,
-                       due_timezone
-                FROM task_occurrences
-                WHERE id = $1 AND household_id = $2
-                FOR UPDATE
-                """,
+            occurrence = await tasks_repository.lock_task_occurrence(
+                conn,
                 occurrence_id,
                 household_id,
             )
@@ -392,13 +254,8 @@ async def update_task(
             if occurrence["status"] != "PENDING":
                 return _error(409, TASK_NOT_PENDING_MESSAGE)
 
-            task = await conn.fetchrow(
-                """
-                SELECT id, title
-                FROM tasks
-                WHERE id = $1 AND household_id = $2
-                FOR UPDATE
-                """,
+            task = await tasks_repository.lock_task(
+                conn,
                 occurrence["task_id"],
                 household_id,
             )
@@ -419,8 +276,10 @@ async def update_task(
                 if data.assignee_membership_id is None:
                     assignee_membership_id = None
                 else:
-                    assignee = await _lock_active_assignee(
-                        conn, household_id, data.assignee_membership_id
+                    assignee = await tasks_repository.lock_active_assignee(
+                        conn,
+                        data.assignee_membership_id,
+                        household_id,
                     )
                     if assignee is None:
                         return _error(400, ASSIGNEE_INVALID_MESSAGE)
@@ -431,52 +290,49 @@ async def update_task(
                     due_at = None
                     due_timezone = None
                 else:
-                    timezone_name = await _household_timezone(conn, household_id)
+                    timezone_name = await tasks_repository.find_household_timezone(
+                        conn, household_id
+                    )
                     resolved = parse_due_local(data.due_local, timezone_name)
                     if resolved <= datetime.now(timezone.utc):
                         return _error(400, DUE_NOT_FUTURE_MESSAGE)
                     due_at = resolved
                     due_timezone = timezone_name
 
-            await conn.execute(
-                """
-                UPDATE tasks
-                SET title = $2, updated_at = now()
-                WHERE id = $1 AND household_id = $3
-                """,
+            await tasks_repository.update_task(
+                conn,
                 task["id"],
                 title,
                 household_id,
             )
-            await conn.execute(
-                """
-                UPDATE task_occurrences
-                SET assignee_membership_id = $2,
-                    due_at = $3,
-                    due_timezone = $4,
-                    updated_at = now()
-                WHERE id = $1 AND household_id = $5
-                """,
+            await tasks_repository.update_task_occurrence(
+                conn,
                 occurrence_id,
                 assignee_membership_id,
                 due_at,
                 due_timezone,
                 household_id,
             )
-            await _write_audit(
+            await tasks_repository.insert_task_activity_event(
                 conn,
+                uuid4(),
                 household_id,
                 user_id,
                 occurrence_id,
                 "TASK_UPDATED",
-                {
-                    "task_id": str(occurrence["task_id"]),
-                    "occurrence_id": str(occurrence_id),
-                    "fields": sorted(fields),
-                },
+                json.dumps(
+                    {
+                        "task_id": str(occurrence["task_id"]),
+                        "occurrence_id": str(occurrence_id),
+                        "fields": sorted(fields),
+                    },
+                    separators=(",", ":"),
+                ),
             )
 
-            row = await _fetch_occurrence(conn, occurrence_id, household_id)
+            row = await tasks_repository.find_occurrence(
+                conn, occurrence_id, household_id
+            )
 
             return {
                 "status": True,
@@ -503,13 +359,8 @@ async def cancel_task(
             if error:
                 return error
 
-            occurrence = await conn.fetchrow(
-                """
-                SELECT id, task_id, status
-                FROM task_occurrences
-                WHERE id = $1 AND household_id = $2
-                FOR UPDATE
-                """,
+            occurrence = await tasks_repository.lock_occurrence_status(
+                conn,
                 occurrence_id,
                 household_id,
             )
@@ -518,7 +369,9 @@ async def cancel_task(
                 return _error(404, TASK_NOT_FOUND_MESSAGE)
 
             if occurrence["status"] == "CANCELLED":
-                row = await _fetch_occurrence(conn, occurrence_id, household_id)
+                row = await tasks_repository.find_occurrence(
+                    conn, occurrence_id, household_id
+                )
                 return {
                     "status": True,
                     "status_code": 200,
@@ -529,32 +382,31 @@ async def cancel_task(
             if occurrence["status"] != "PENDING":
                 return _error(409, TASK_NOT_PENDING_MESSAGE)
 
-            await conn.execute(
-                """
-                UPDATE task_occurrences
-                SET status = 'CANCELLED',
-                    cancelled_at = now(),
-                    cancelled_by = $3,
-                    updated_at = now()
-                WHERE id = $1 AND household_id = $2
-                """,
+            await tasks_repository.cancel_task_occurrence(
+                conn,
                 occurrence_id,
                 household_id,
                 user_id,
             )
-            await _write_audit(
+            await tasks_repository.insert_task_activity_event(
                 conn,
+                uuid4(),
                 household_id,
                 user_id,
                 occurrence_id,
                 "TASK_CANCELLED",
-                {
-                    "task_id": str(occurrence["task_id"]),
-                    "occurrence_id": str(occurrence_id),
-                },
+                json.dumps(
+                    {
+                        "task_id": str(occurrence["task_id"]),
+                        "occurrence_id": str(occurrence_id),
+                    },
+                    separators=(",", ":"),
+                ),
             )
 
-            row = await _fetch_occurrence(conn, occurrence_id, household_id)
+            row = await tasks_repository.find_occurrence(
+                conn, occurrence_id, household_id
+            )
 
             return {
                 "status": True,

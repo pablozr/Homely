@@ -8,6 +8,7 @@ import asyncpg
 from core.config.config import settings
 from core.logger.logger import logger
 from core.security.security import derive_invite_token, hash_invite_token
+from repositories.households import households_repository, invites_repository
 from schemas.households import (
     household_summary_from_row,
     invite_from_row,
@@ -47,20 +48,13 @@ async def create_invite(
 ) -> dict:
     try:
         async with conn.transaction():
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            await invites_repository.acquire_advisory_lock(
+                conn,
                 f"{OPERATION_CREATE_INVITE}:{household_id}:{idempotency_key}",
             )
 
-            record = await conn.fetchrow(
-                """
-                SELECT fingerprint, resource_id, response_status, response_data, expires_at
-                FROM idempotency_records
-                WHERE user_id = $1
-                  AND household_id = $2
-                  AND operation = $3
-                  AND idempotency_key = $4
-                """,
+            record = await invites_repository.find_create_invite_idempotency_record(
+                conn,
                 user_id,
                 household_id,
                 OPERATION_CREATE_INVITE,
@@ -101,18 +95,8 @@ async def create_invite(
                 days=settings.INVITE_EXPIRE_DAYS
             )
 
-            invite = await conn.fetchrow(
-                """
-                INSERT INTO household_invites (
-                    id,
-                    household_id,
-                    token_hash,
-                    created_by,
-                    expires_at
-                )
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id, household_id, created_at, expires_at
-                """,
+            invite = await invites_repository.insert_invite(
+                conn,
                 invite_id,
                 household_id,
                 hash_invite_token(token),
@@ -120,19 +104,8 @@ async def create_invite(
                 expires_at,
             )
 
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household_invite', $4, 'INVITE_CREATED', $5::jsonb)
-                """,
+            await invites_repository.insert_invite_created_event(
+                conn,
                 uuid4(),
                 household_id,
                 user_id,
@@ -143,32 +116,8 @@ async def create_invite(
             stored_data = invite_from_row(invite)
             response_data = {**stored_data, "invite_url": invite_url(token)}
 
-            await conn.execute(
-                """
-                INSERT INTO idempotency_records (
-                    id,
-                    user_id,
-                    household_id,
-                    operation,
-                    idempotency_key,
-                    fingerprint,
-                    payload,
-                    resource_id,
-                    response_status,
-                    response_data,
-                    expires_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7, 201, $8::jsonb, $9)
-                ON CONFLICT ON CONSTRAINT uq_idempotency_records_scope
-                DO UPDATE SET
-                    fingerprint = EXCLUDED.fingerprint,
-                    payload = EXCLUDED.payload,
-                    resource_id = EXCLUDED.resource_id,
-                    response_status = EXCLUDED.response_status,
-                    response_data = EXCLUDED.response_data,
-                    created_at = now(),
-                    expires_at = EXCLUDED.expires_at
-                """,
+            await invites_repository.upsert_invite_idempotency_record(
+                conn,
                 uuid4(),
                 user_id,
                 household_id,
@@ -198,18 +147,7 @@ async def create_invite(
 
 async def list_invites(conn: asyncpg.Connection, household_id) -> dict:
     try:
-        rows = await conn.fetch(
-            """
-            SELECT id, household_id, created_at, expires_at
-            FROM household_invites
-            WHERE household_id = $1
-              AND revoked_at IS NULL
-              AND accepted_at IS NULL
-              AND expires_at > now()
-            ORDER BY created_at DESC, id
-            """,
-            household_id,
-        )
+        rows = await invites_repository.list_active_invites(conn, household_id)
 
         return {
             "status": True,
@@ -241,13 +179,8 @@ async def revoke_invite(
             if error:
                 return error
 
-            invite = await conn.fetchrow(
-                """
-                SELECT id, accepted_at, revoked_at
-                FROM household_invites
-                WHERE id = $1 AND household_id = $2
-                FOR UPDATE
-                """,
+            invite = await invites_repository.lock_invite(
+                conn,
                 invite_id,
                 household_id,
             )
@@ -279,30 +212,14 @@ async def revoke_invite(
                     },
                 }
 
-            revoked_at = await conn.fetchval(
-                """
-                UPDATE household_invites
-                SET revoked_at = now(), revoked_by = $3
-                WHERE id = $1 AND household_id = $2
-                RETURNING revoked_at
-                """,
+            revoked_at = await invites_repository.revoke_invite(
+                conn,
                 invite_id,
                 household_id,
                 user_id,
             )
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household_invite', $4, 'INVITE_REVOKED', $5::jsonb)
-                """,
+            await invites_repository.insert_invite_revoked_event(
+                conn,
                 uuid4(),
                 household_id,
                 user_id,
@@ -346,22 +263,18 @@ async def accept_invite(
         )
 
         async with conn.transaction():
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            await invites_repository.acquire_advisory_lock(
+                conn,
                 f"invite-accept-user:{user_id}",
             )
             if client_ip:
-                await conn.execute(
-                    "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+                await invites_repository.acquire_advisory_lock(
+                    conn,
                     f"invite-accept-ip:{client_ip}",
                 )
 
-            user_attempts = await conn.fetchval(
-                """
-                SELECT count(*)
-                FROM household_invite_accept_attempts
-                WHERE user_id = $1 AND created_at > $2
-                """,
+            user_attempts = await invites_repository.count_user_accept_attempts(
+                conn,
                 user_id,
                 user_window_start,
             )
@@ -374,12 +287,8 @@ async def accept_invite(
                 }
 
             if client_ip:
-                ip_attempts = await conn.fetchval(
-                    """
-                    SELECT count(*)
-                    FROM household_invite_accept_attempts
-                    WHERE requested_ip = $1 AND created_at > $2
-                    """,
+                ip_attempts = await invites_repository.count_ip_accept_attempts(
+                    conn,
                     client_ip,
                     ip_window_start,
                 )
@@ -391,36 +300,19 @@ async def accept_invite(
                         "data": {},
                     }
 
-            await conn.execute(
-                """
-                INSERT INTO household_invite_accept_attempts (id, user_id, requested_ip)
-                VALUES ($1, $2, $3)
-                """,
+            await invites_repository.insert_accept_attempt(
+                conn,
                 uuid4(),
                 user_id,
                 client_ip,
             )
 
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            await invites_repository.acquire_advisory_lock(
+                conn,
                 f"invite:{token_hash}",
             )
 
-            invite = await conn.fetchrow(
-                """
-                SELECT id,
-                       household_id,
-                       expires_at,
-                       revoked_at,
-                       accepted_at,
-                       accepted_by,
-                       accepted_membership_id
-                FROM household_invites
-                WHERE token_hash = $1
-                FOR UPDATE
-                """,
-                token_hash,
-            )
+            invite = await invites_repository.lock_invite_by_token(conn, token_hash)
 
             if not invite:
                 return {
@@ -437,21 +329,13 @@ async def accept_invite(
                 if invite["accepted_by"] != user_id:
                     return unavailable_response()
 
-                membership = await conn.fetchrow(
-                    """
-                    SELECT id, user_id, role, status, joined_at
-                    FROM household_members
-                    WHERE id = $1 AND household_id = $2 AND status = 'ACTIVE'
-                    """,
+                membership = await invites_repository.find_active_membership_by_id(
+                    conn,
                     invite["accepted_membership_id"],
                     invite["household_id"],
                 )
-                household = await conn.fetchrow(
-                    """
-                    SELECT id, name, timezone, default_due_time, created_at, deactivated_at
-                    FROM households
-                    WHERE id = $1
-                    """,
+                household = await invites_repository.find_household(
+                    conn,
                     invite["household_id"],
                 )
                 if (
@@ -461,8 +345,8 @@ async def accept_invite(
                 ):
                     return unavailable_response()
 
-                await conn.execute(
-                    "UPDATE users SET last_household_id = $2 WHERE id = $1",
+                await households_repository.update_user_last_household(
+                    conn,
                     user_id,
                     household["id"],
                 )
@@ -481,72 +365,42 @@ async def accept_invite(
                     },
                 }
 
-            household = await conn.fetchrow(
-                """
-                SELECT id, name, timezone, default_due_time, created_at, deactivated_at
-                FROM households
-                WHERE id = $1
-                """,
+            household = await invites_repository.find_household(
+                conn,
                 invite["household_id"],
             )
             if not household or household["deactivated_at"] is not None:
                 return unavailable_response()
 
-            membership = await conn.fetchrow(
-                """
-                SELECT id, user_id, role, status, joined_at
-                FROM household_members
-                WHERE household_id = $1 AND user_id = $2 AND status = 'ACTIVE'
-                FOR UPDATE
-                """,
+            membership = await invites_repository.find_active_membership_for_update(
+                conn,
                 household["id"],
                 user_id,
             )
 
             membership_created = False
             if membership is None:
-                membership = await conn.fetchrow(
-                    """
-                    INSERT INTO household_members (id, household_id, user_id, role, status)
-                    VALUES ($1, $2, $3, 'MEMBER', 'ACTIVE')
-                    RETURNING id, user_id, role, status, joined_at
-                    """,
+                membership = await invites_repository.insert_active_membership(
+                    conn,
                     uuid4(),
                     household["id"],
                     user_id,
                 )
                 membership_created = True
 
-            await conn.execute(
-                """
-                UPDATE household_invites
-                SET accepted_at = now(),
-                    accepted_by = $2,
-                    accepted_membership_id = $3
-                WHERE id = $1
-                """,
+            await invites_repository.mark_invite_accepted(
+                conn,
                 invite["id"],
                 user_id,
                 membership["id"],
             )
-            await conn.execute(
-                "UPDATE users SET last_household_id = $2 WHERE id = $1",
+            await households_repository.update_user_last_household(
+                conn,
                 user_id,
                 household["id"],
             )
-            await conn.execute(
-                """
-                INSERT INTO activity_events (
-                    id,
-                    household_id,
-                    actor_user_id,
-                    entity_type,
-                    entity_id,
-                    event_type,
-                    metadata
-                )
-                VALUES ($1, $2, $3, 'household_invite', $4, 'INVITE_ACCEPTED', $5::jsonb)
-                """,
+            await invites_repository.insert_invite_accepted_event(
+                conn,
                 uuid4(),
                 household["id"],
                 user_id,
@@ -560,19 +414,8 @@ async def accept_invite(
                 ),
             )
             if membership_created:
-                await conn.execute(
-                    """
-                    INSERT INTO activity_events (
-                        id,
-                        household_id,
-                        actor_user_id,
-                        entity_type,
-                        entity_id,
-                        event_type,
-                        metadata
-                    )
-                    VALUES ($1, $2, $3, 'household_member', $4, 'MEMBER_JOINED', $5::jsonb)
-                    """,
+                await invites_repository.insert_member_joined_event(
+                    conn,
                     uuid4(),
                     household["id"],
                     user_id,

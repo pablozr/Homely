@@ -8,6 +8,8 @@ SQL_FREE_MODULES = (
     "services/profile/profile_service.py",
     "services/households/households_service.py",
     "services/households/memberships_service.py",
+    "services/households/invites_service.py",
+    "services/tasks/tasks_service.py",
     "dependencies/households.py",
     "core/security/security.py",
 )
