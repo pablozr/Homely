@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_SECRET_KEY = "development-only-secret-key-change-me"
+DEFAULT_INVITE_TOKEN_SECRET = "development-only-invite-token-secret-change-me"
 
 
 class Settings(BaseSettings):
@@ -37,6 +38,14 @@ class Settings(BaseSettings):
     MAGIC_LINK_EXCHANGE_IP_RATE_LIMIT: int = 10
     MAGIC_LINK_EXCHANGE_IP_RATE_WINDOW_MINUTES: int = 15
 
+    INVITE_TOKEN_SECRET: str = DEFAULT_INVITE_TOKEN_SECRET
+    INVITE_EXPIRE_DAYS: int = 7
+    INVITE_DEEP_LINK_BASE: str = "homely://invite"
+    INVITE_ACCEPT_USER_RATE_LIMIT: int = 10
+    INVITE_ACCEPT_USER_RATE_WINDOW_MINUTES: int = 15
+    INVITE_ACCEPT_IP_RATE_LIMIT: int = 10
+    INVITE_ACCEPT_IP_RATE_WINDOW_MINUTES: int = 15
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @model_validator(mode="after")
@@ -45,6 +54,14 @@ class Settings(BaseSettings):
             self.SECRET_KEY == DEFAULT_SECRET_KEY or len(self.SECRET_KEY) < 32
         ):
             raise ValueError("SECRET_KEY must have at least 32 characters outside development")
+
+        if self.ENVIRONMENT.lower() != "development" and (
+            self.INVITE_TOKEN_SECRET == DEFAULT_INVITE_TOKEN_SECRET
+            or len(self.INVITE_TOKEN_SECRET) < 32
+        ):
+            raise ValueError(
+                "INVITE_TOKEN_SECRET must have at least 32 characters outside development"
+            )
 
         return self
 

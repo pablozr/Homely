@@ -277,3 +277,62 @@ async def select_household(conn: asyncpg.Connection, user_id, household_id) -> d
             "message": "Internal server error",
             "data": {},
         }
+
+
+async def lock_active_membership(
+    conn: asyncpg.Connection,
+    household_id,
+    user_id,
+    required_role: str | None = None,
+) -> tuple[dict | None, dict | None]:
+    household = await conn.fetchrow(
+        "SELECT id, deactivated_at FROM households WHERE id = $1 FOR UPDATE",
+        household_id,
+    )
+
+    if not household:
+        return None, {
+            "status": False,
+            "status_code": 404,
+            "message": "Household not found",
+            "data": {},
+        }
+
+    if household["deactivated_at"] is not None:
+        return None, {
+            "status": False,
+            "status_code": 409,
+            "message": "Household is deactivated",
+            "data": {},
+        }
+
+    membership = await conn.fetchrow(
+        """
+        SELECT id, role
+        FROM household_members
+        WHERE household_id = $1
+          AND user_id = $2
+          AND status = 'ACTIVE'
+        FOR UPDATE
+        """,
+        household_id,
+        user_id,
+    )
+
+    if not membership:
+        return None, {
+            "status": False,
+            "status_code": 403,
+            "message": "Active membership required",
+            "data": {},
+        }
+
+    if required_role is not None and membership["role"] != required_role:
+        return None, {
+            "status": False,
+            "status_code": 403,
+            "message": "Owner membership required",
+            "data": {},
+        }
+
+    return {"membership_id": membership["id"], "role": membership["role"]}, None

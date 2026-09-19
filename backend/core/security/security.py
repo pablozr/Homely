@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+from hmac import new as hmac_new
 from secrets import token_urlsafe
 from uuid import UUID
 
@@ -38,6 +39,18 @@ def create_magic_link_code() -> str:
 
 def hash_magic_link_code(code: str) -> str:
     return sha256(code.encode("utf-8")).hexdigest()
+
+
+def derive_invite_token(invite_id: UUID) -> str:
+    return hmac_new(
+        settings.INVITE_TOKEN_SECRET.encode("utf-8"),
+        str(invite_id).encode("utf-8"),
+        sha256,
+    ).hexdigest()
+
+
+def hash_invite_token(token: str) -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
 
 
 async def verify_token(

@@ -380,6 +380,425 @@
         }
       }
     },
+    "/households/invites/accept": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Accept Invite",
+        "operationId": "accept_invite_households_invites_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteAcceptRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAcceptResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/households/{household_id}/invites": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Create Invite",
+        "operationId": "create_invite_households__household_id__invites_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCreatedResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "List Invites",
+        "operationId": "list_invites_households__household_id__invites_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitesResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/invites/{invite_id}/revoke": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Revoke Invite",
+        "operationId": "revoke_invite_households__household_id__invites__invite_id__revoke_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invite Id"
+            }
+          },
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteRevokeResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/members": {
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "List Members",
+        "operationId": "list_members_households__household_id__members_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipsResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/members/{membership_id}/remove": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Remove Member",
+        "operationId": "remove_member_households__household_id__members__membership_id__remove_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "membership_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Membership Id"
+            }
+          },
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipRemovedResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/leave": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Leave Household",
+        "operationId": "leave_household_households__household_id__leave_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdLeaveResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/ownership-transfer": {
+      "post": {
+        "tags": [
+          "households"
+        ],
+        "summary": "Transfer Ownership",
+        "operationId": "transfer_ownership_households__household_id__ownership_transfer_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "household_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Household Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipTransferRequestModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferResponseModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -491,6 +910,42 @@
           "data"
         ],
         "title": "HouseholdCreatedResponseModel"
+      },
+      "HouseholdLeaveDataModel": {
+        "properties": {
+          "household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Household Id"
+          },
+          "left_at": {
+            "type": "string",
+            "title": "Left At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "household_id",
+          "left_at"
+        ],
+        "title": "HouseholdLeaveDataModel"
+      },
+      "HouseholdLeaveResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HouseholdLeaveDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "HouseholdLeaveResponseModel"
       },
       "HouseholdSelectionDataModel": {
         "properties": {
@@ -613,6 +1068,216 @@
         ],
         "title": "HouseholdsResponseModel"
       },
+      "InviteAcceptDataModel": {
+        "properties": {
+          "household": {
+            "$ref": "#/components/schemas/HouseholdSummaryModel"
+          },
+          "membership": {
+            "$ref": "#/components/schemas/MembershipModel"
+          },
+          "membership_created": {
+            "type": "boolean",
+            "title": "Membership Created"
+          },
+          "selected_household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Selected Household Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "household",
+          "membership",
+          "membership_created",
+          "selected_household_id"
+        ],
+        "title": "InviteAcceptDataModel"
+      },
+      "InviteAcceptRequestModel": {
+        "properties": {
+          "invite_token": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Invite Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "invite_token"
+        ],
+        "title": "InviteAcceptRequestModel"
+      },
+      "InviteAcceptResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InviteAcceptDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "InviteAcceptResponseModel"
+      },
+      "InviteCreatedDataModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Household Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At"
+          },
+          "invite_url": {
+            "type": "string",
+            "title": "Invite Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "household_id",
+          "created_at",
+          "expires_at",
+          "invite_url"
+        ],
+        "title": "InviteCreatedDataModel"
+      },
+      "InviteCreatedResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InviteCreatedDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "InviteCreatedResponseModel"
+      },
+      "InviteModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Household Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "household_id",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "InviteModel"
+      },
+      "InviteRevokeDataModel": {
+        "properties": {
+          "invite_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Invite Id"
+          },
+          "revoked_at": {
+            "type": "string",
+            "title": "Revoked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "invite_id",
+          "revoked_at"
+        ],
+        "title": "InviteRevokeDataModel"
+      },
+      "InviteRevokeResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InviteRevokeDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "InviteRevokeResponseModel"
+      },
+      "InvitesDataModel": {
+        "properties": {
+          "invites": {
+            "items": {
+              "$ref": "#/components/schemas/InviteModel"
+            },
+            "type": "array",
+            "title": "Invites"
+          }
+        },
+        "type": "object",
+        "required": [
+          "invites"
+        ],
+        "title": "InvitesDataModel"
+      },
+      "InvitesResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InvitesDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "InvitesResponseModel"
+      },
       "MagicLinkRequestModel": {
         "properties": {
           "email": {
@@ -625,6 +1290,217 @@
           "email"
         ],
         "title": "MagicLinkRequestModel"
+      },
+      "MemberModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "joined_at": {
+            "type": "string",
+            "title": "Joined At"
+          },
+          "fullname": {
+            "type": "string",
+            "title": "Fullname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "role",
+          "status",
+          "joined_at",
+          "fullname"
+        ],
+        "title": "MemberModel"
+      },
+      "MembershipModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "joined_at": {
+            "type": "string",
+            "title": "Joined At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "role",
+          "status",
+          "joined_at"
+        ],
+        "title": "MembershipModel"
+      },
+      "MembershipRemovedDataModel": {
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Membership Id"
+          },
+          "removed_at": {
+            "type": "string",
+            "title": "Removed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "membership_id",
+          "removed_at"
+        ],
+        "title": "MembershipRemovedDataModel"
+      },
+      "MembershipRemovedResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MembershipRemovedDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "MembershipRemovedResponseModel"
+      },
+      "MembershipsDataModel": {
+        "properties": {
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/MemberModel"
+            },
+            "type": "array",
+            "title": "Memberships"
+          }
+        },
+        "type": "object",
+        "required": [
+          "memberships"
+        ],
+        "title": "MembershipsDataModel"
+      },
+      "MembershipsResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MembershipsDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "MembershipsResponseModel"
+      },
+      "OwnershipTransferDataModel": {
+        "properties": {
+          "household_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Household Id"
+          },
+          "previous_owner_membership_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Previous Owner Membership Id"
+          },
+          "previous_owner_role": {
+            "type": "string",
+            "title": "Previous Owner Role"
+          },
+          "new_owner_membership_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "New Owner Membership Id"
+          },
+          "new_owner_role": {
+            "type": "string",
+            "title": "New Owner Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "household_id",
+          "previous_owner_membership_id",
+          "previous_owner_role",
+          "new_owner_membership_id",
+          "new_owner_role"
+        ],
+        "title": "OwnershipTransferDataModel"
+      },
+      "OwnershipTransferRequestModel": {
+        "properties": {
+          "target_membership_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Membership Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_membership_id"
+        ],
+        "title": "OwnershipTransferRequestModel"
+      },
+      "OwnershipTransferResponseModel": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OwnershipTransferDataModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "data"
+        ],
+        "title": "OwnershipTransferResponseModel"
       },
       "ProfileUpdateRequestModel": {
         "properties": {

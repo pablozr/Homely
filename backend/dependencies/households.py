@@ -60,3 +60,12 @@ async def require_active_membership(
         "membership_id": row["membership_id"],
         "role": row["role"],
     }
+
+
+async def require_owner_membership(
+    membership: dict = Depends(require_active_membership),
+) -> dict:
+    if membership["role"] != "OWNER":
+        raise HTTPException(status_code=403, detail="Owner membership required")
+
+    return membership
