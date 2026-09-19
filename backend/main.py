@@ -8,6 +8,7 @@ from core.postgresql.postgresql import postgresql
 from routes.auth.router import router as auth_router
 from routes.households.router import router as households_router
 from routes.profile.router import router as profile_router
+from routes.tasks.router import router as tasks_router
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(profile_router, prefix="/profile", tags=["profile"])
 app.include_router(households_router, prefix="/households", tags=["households"])
+app.include_router(tasks_router, prefix="/households", tags=["tasks"])
 
 
 @app.get("/health", tags=["health"])

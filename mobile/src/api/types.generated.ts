@@ -262,6 +262,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/households/{household_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tasks */
+        get: operations["list_tasks_households__household_id__tasks_get"];
+        put?: never;
+        /** Create Task */
+        post: operations["create_task_households__household_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/households/{household_id}/tasks/{occurrence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Task */
+        patch: operations["update_task_households__household_id__tasks__occurrence_id__patch"];
+        trace?: never;
+    };
+    "/households/{household_id}/tasks/{occurrence_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Task */
+        post: operations["cancel_task_households__household_id__tasks__occurrence_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -587,6 +639,109 @@ export interface components {
         RefreshTokenRequestModel: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /** TaskAssigneeModel */
+        TaskAssigneeModel: {
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Fullname */
+            fullname: string;
+        };
+        /** TaskCreateRequestModel */
+        TaskCreateRequestModel: {
+            /** Title */
+            title: string;
+            /** Assignee Membership Id */
+            assignee_membership_id?: string | null;
+            /** Due Local */
+            due_local?: string | null;
+        };
+        /** TaskEnvelopeModel */
+        TaskEnvelopeModel: {
+            task: components["schemas"]["TaskModel"];
+        };
+        /** TaskModel */
+        TaskModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurrence Id
+             * Format: uuid
+             */
+            occurrence_id: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /**
+             * Household Id
+             * Format: uuid
+             */
+            household_id: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            assignee: components["schemas"]["TaskAssigneeModel"] | null;
+            /** Due At */
+            due_at: string | null;
+            /** Due Timezone */
+            due_timezone: string | null;
+            /** Due Local */
+            due_local: string | null;
+            /** Is Overdue */
+            is_overdue: boolean;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Cancelled By */
+            cancelled_by: string | null;
+        };
+        /** TaskResponseModel */
+        TaskResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["TaskEnvelopeModel"];
+        };
+        /** TaskUpdateRequestModel */
+        TaskUpdateRequestModel: {
+            /** Title */
+            title?: string | null;
+            /** Assignee Membership Id */
+            assignee_membership_id?: string | null;
+            /** Due Local */
+            due_local?: string | null;
+        };
+        /** TasksDataModel */
+        TasksDataModel: {
+            /** Tasks */
+            tasks: components["schemas"]["TaskModel"][];
+        };
+        /** TasksResponseModel */
+        TasksResponseModel: {
+            /** Message */
+            message: string;
+            data: components["schemas"]["TasksDataModel"];
         };
         /** ValidationError */
         ValidationError: {
@@ -1146,6 +1301,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OwnershipTransferResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_households__household_id__tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_households__household_id__tasks_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreateRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_task_households__household_id__tasks__occurrence_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                occurrence_id: string;
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdateRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_task_households__household_id__tasks__occurrence_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                occurrence_id: string;
+                household_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseModel"];
                 };
             };
             /** @description Validation Error */

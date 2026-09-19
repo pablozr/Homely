@@ -7,6 +7,7 @@ import { useTheme } from '@/design/useTheme';
 import { useSignOut } from '@/features/auth/mutations';
 import { useLeaveHousehold, useSelectHousehold } from '@/features/households/mutations';
 import type { HouseholdSummary } from '@/features/households/types';
+import { TaskListPanel } from '@/features/tasks/components/TaskListPanel';
 
 import { HouseholdInvitesPanel } from './HouseholdInvitesPanel';
 import { HouseholdMembersPanel } from './HouseholdMembersPanel';
@@ -62,6 +63,8 @@ export function HouseholdHome({ household, households }: HouseholdHomeProps) {
         disabled={selectHousehold.isPending}
         isError={selectHousehold.isError}
       />
+
+      <TaskListPanel key={household.id} household={household} />
 
       <HouseholdMembersPanel householdId={household.id} role={household.role} />
 
