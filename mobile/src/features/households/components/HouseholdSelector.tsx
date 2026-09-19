@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import type { Theme } from '@/design/tokens';
+import { useTheme } from '@/design/useTheme';
 import type { HouseholdSummary } from '@/features/households/types';
 
 type HouseholdSelectorProps = {
@@ -17,6 +20,9 @@ export function HouseholdSelector({
   disabled,
   isError,
 }: HouseholdSelectorProps) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   if (households.length <= 1) {
     return null;
   }
@@ -30,7 +36,11 @@ export function HouseholdSelector({
         return (
           <Pressable
             key={option.id}
-            style={[styles.option, isActive && styles.optionActive]}
+            style={({ pressed }) => [
+              styles.option,
+              isActive && styles.optionActive,
+              pressed && !isActive && !disabled && styles.optionPressed,
+            ]}
             onPress={() => {
               if (!isActive) {
                 onSelect(option.id);
@@ -38,7 +48,7 @@ export function HouseholdSelector({
             }}
             disabled={disabled || isActive}
             accessibilityRole="button"
-            accessibilityState={{ selected: isActive }}
+            accessibilityState={{ selected: isActive, disabled: disabled || isActive }}
             accessibilityLabel={`Ativar casa ${option.name}`}
           >
             <Text style={[styles.optionLabel, isActive && styles.optionLabelActive]}>
@@ -49,31 +59,40 @@ export function HouseholdSelector({
         );
       })}
       {isError ? (
-        <Text style={styles.error}>Nao foi possivel trocar de casa. Tente novamente.</Text>
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          Nao foi possivel trocar de casa. Tente novamente.
+        </Text>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { marginTop: 32 },
-  label: { fontSize: 14, fontWeight: '600', color: '#1C2B22' },
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: { marginTop: theme.spacing.xl },
+    label: { ...theme.typography.label, color: theme.colors.textSecondary },
 
-  option: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1C2B22',
-  },
-  optionActive: { backgroundColor: '#1C2B22' },
-  optionLabel: { fontSize: 16, fontWeight: '600', color: '#1C2B22' },
-  optionLabelActive: { color: '#F7F6F2' },
-  optionHint: { fontSize: 12, color: '#D8E2DA' },
+    option: {
+      marginTop: theme.spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.outlineStrong,
+      backgroundColor: theme.colors.surface,
+    },
+    optionPressed: { backgroundColor: theme.colors.surfaceAccent },
+    optionActive: {
+      backgroundColor: theme.colors.primarySubtle,
+      borderColor: theme.colors.primary,
+    },
+    optionLabel: { ...theme.typography.bodyStrong, color: theme.colors.primary },
+    optionLabelActive: { color: theme.colors.primary },
+    optionHint: { ...theme.typography.caption, color: theme.colors.primary },
 
-  error: { marginTop: 12, fontSize: 14, color: '#B3261E' },
-});
+    error: { ...theme.typography.label, marginTop: theme.spacing.sm, color: theme.colors.error },
+  });

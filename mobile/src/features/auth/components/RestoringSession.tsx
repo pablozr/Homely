@@ -1,23 +1,33 @@
+import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { BrandMark } from '@/design/BrandMark';
+import type { Theme } from '@/design/tokens';
+import { useTheme } from '@/design/useTheme';
+
 export function RestoringSession() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#1C2B22" />
+      <BrandMark size={64} />
+      <ActivityIndicator size="large" color={theme.colors.primary} />
       <Text style={styles.label}>Restaurando sessao...</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    padding: 32,
-    backgroundColor: '#F7F6F2',
-  },
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing.md,
+      padding: theme.spacing.xl,
+      backgroundColor: theme.colors.background,
+    },
 
-  label: { fontSize: 16, color: '#526258' },
-});
+    label: { ...theme.typography.body, color: theme.colors.textSecondary },
+  });

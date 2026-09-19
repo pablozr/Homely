@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { BrandMark } from '@/design/BrandMark';
+import type { Theme } from '@/design/tokens';
+import { useTheme } from '@/design/useTheme';
 import { resolveActiveHouseholdId, useHouseholds } from '@/features/households/queries';
 import { useActiveHouseholdStore } from '@/stores/active-household';
 
@@ -8,6 +11,8 @@ import { HouseholdHome } from './HouseholdHome';
 import { NoHouseholdHome } from './NoHouseholdHome';
 
 export function HouseholdGate() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { data, isPending, isError, refetch } = useHouseholds();
   const activeHouseholdId = useActiveHouseholdStore((state) => state.activeHouseholdId);
   const setActiveHouseholdId = useActiveHouseholdStore((state) => state.setActiveHouseholdId);
@@ -41,7 +46,8 @@ export function HouseholdGate() {
   if (isPending) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator color="#1C2B22" />
+        <BrandMark size={48} />
+        <ActivityIndicator color={theme.colors.primary} />
         <Text style={styles.subtitle}>Carregando suas casas...</Text>
       </View>
     );
@@ -50,9 +56,10 @@ export function HouseholdGate() {
   if (isError || !data) {
     return (
       <View style={styles.container}>
+        <BrandMark size={48} />
         <Text style={styles.title}>Nao foi possivel carregar suas casas</Text>
         <Pressable
-          style={styles.button}
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
           onPress={() => refetch()}
           accessibilityRole="button"
           accessibilityLabel="Tentar novamente"
@@ -74,7 +81,8 @@ export function HouseholdGate() {
   if (!activeHousehold) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator color="#1C2B22" />
+        <BrandMark size={48} />
+        <ActivityIndicator color={theme.colors.primary} />
       </View>
     );
   }
@@ -82,25 +90,32 @@ export function HouseholdGate() {
   return <HouseholdHome household={activeHousehold} households={data.data.households} />;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    backgroundColor: '#F7F6F2',
-  },
-  title: { fontSize: 22, fontWeight: '700', color: '#1C2B22', textAlign: 'center' },
-  subtitle: { marginTop: 12, fontSize: 16, color: '#526258', textAlign: 'center' },
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing.md,
+      padding: theme.spacing.xl,
+      backgroundColor: theme.colors.background,
+    },
+    title: {
+      ...theme.typography.heading,
+      color: theme.colors.textPrimary,
+      textAlign: 'center',
+    },
+    subtitle: { ...theme.typography.body, color: theme.colors.textSecondary, textAlign: 'center' },
 
-  button: {
-    marginTop: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: '#1C2B22',
-  },
-  buttonLabel: { fontSize: 16, fontWeight: '600', color: '#F7F6F2' },
-});
+    button: {
+      marginTop: theme.spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.lg,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.primary,
+    },
+    buttonPressed: { backgroundColor: theme.colors.primaryPressed },
+    buttonLabel: { ...theme.typography.bodyStrong, color: theme.colors.textOnPrimary },
+  });

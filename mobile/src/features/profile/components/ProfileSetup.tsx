@@ -1,11 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { BrandLockup } from '@/design/BrandLockup';
+import type { Theme } from '@/design/tokens';
+import { useTheme } from '@/design/useTheme';
 import { useUpdateProfile } from '@/features/profile/mutations';
 import { fullnameSchema } from '@/features/profile/schemas';
 import { useSessionStore } from '@/stores/session';
 
 export function ProfileSetup() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const suggestedName = useSessionStore((state) => state.user?.fullname ?? '');
   const [fullname, setFullname] = useState(suggestedName);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -25,7 +30,7 @@ export function ProfileSetup() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Homely</Text>
+      <BrandLockup />
       <Text style={styles.subtitle}>Como voce quer ser chamado?</Text>
 
       <TextInput
@@ -33,27 +38,39 @@ export function ProfileSetup() {
         value={fullname}
         onChangeText={setFullname}
         placeholder="Seu nome"
-        placeholderTextColor="#8A968E"
+        placeholderTextColor={theme.colors.placeholder}
         autoCapitalize="words"
         autoCorrect={false}
         maxLength={255}
         editable={!updateProfile.isPending}
         onSubmitEditing={handleSubmit}
+        accessibilityLabel="Seu nome"
       />
 
-      {validationError ? <Text style={styles.error}>{validationError}</Text> : null}
+      {validationError ? (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {validationError}
+        </Text>
+      ) : null}
       {updateProfile.isError ? (
-        <Text style={styles.error}>Nao foi possivel salvar o nome. Tente novamente.</Text>
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          Nao foi possivel salvar o nome. Tente novamente.
+        </Text>
       ) : null}
 
       <Pressable
-        style={[styles.button, updateProfile.isPending && styles.buttonDisabled]}
+        style={({ pressed }) => [
+          styles.button,
+          pressed && !updateProfile.isPending && styles.buttonPressed,
+          updateProfile.isPending && styles.buttonDisabled,
+        ]}
         onPress={handleSubmit}
         disabled={updateProfile.isPending}
         accessibilityRole="button"
+        accessibilityState={{ disabled: updateProfile.isPending, busy: updateProfile.isPending }}
       >
         {updateProfile.isPending ? (
-          <ActivityIndicator color="#F7F6F2" />
+          <ActivityIndicator color={theme.colors.textOnPrimary} />
         ) : (
           <Text style={styles.buttonLabel}>Continuar</Text>
         )}
@@ -62,31 +79,46 @@ export function ProfileSetup() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 32, backgroundColor: '#F7F6F2' },
-  title: { fontSize: 42, fontWeight: '700', color: '#1C2B22' },
-  subtitle: { marginTop: 8, fontSize: 18, color: '#526258' },
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: theme.spacing.xl,
+      backgroundColor: theme.colors.background,
+    },
 
-  input: {
-    marginTop: 32,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    color: '#1C2B22',
-    fontSize: 16,
-  },
+    subtitle: {
+      ...theme.typography.body,
+      marginTop: theme.spacing.lg,
+      color: theme.colors.textSecondary,
+    },
 
-  error: { marginTop: 12, fontSize: 14, color: '#B3261E' },
+    input: {
+      ...theme.typography.body,
+      marginTop: theme.spacing.xl,
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.outline,
+      backgroundColor: theme.colors.surfaceElevated,
+      color: theme.colors.textPrimary,
+    },
 
-  button: {
-    marginTop: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#1C2B22',
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonLabel: { fontSize: 16, fontWeight: '600', color: '#F7F6F2' },
-});
+    error: { ...theme.typography.label, marginTop: theme.spacing.sm, color: theme.colors.error },
+
+    button: {
+      marginTop: theme.spacing.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.lg,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.primary,
+    },
+    buttonPressed: { backgroundColor: theme.colors.primaryPressed },
+    buttonDisabled: { opacity: 0.6 },
+    buttonLabel: { ...theme.typography.bodyStrong, color: theme.colors.textOnPrimary },
+  });

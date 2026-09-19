@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { BrandLockup } from '@/design/BrandLockup';
+import type { Theme } from '@/design/tokens';
+import { useTheme } from '@/design/useTheme';
 import { useRequestMagicLink } from '@/features/auth/mutations';
 import { emailSchema } from '@/features/auth/schemas';
 
 export function MagicLinkForm() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [email, setEmail] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const requestMagicLink = useRequestMagicLink();
@@ -34,35 +39,51 @@ export function MagicLinkForm() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Homely</Text>
-      <Text style={styles.subtitle}>Entre com seu e-mail, sem senha.</Text>
+      <BrandLockup />
+      <Text style={styles.lead}>Entre com seu e-mail, sem senha.</Text>
 
       <TextInput
         style={styles.input}
         value={email}
         onChangeText={setEmail}
         placeholder="voce@exemplo.com"
-        placeholderTextColor="#8A968E"
+        placeholderTextColor={theme.colors.placeholder}
         keyboardType="email-address"
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete="email"
         editable={!requestMagicLink.isPending}
         onSubmitEditing={handleSubmit}
+        accessibilityLabel="E-mail"
       />
 
-      {validationError ? <Text style={styles.error}>{validationError}</Text> : null}
+      {validationError ? (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {validationError}
+        </Text>
+      ) : null}
       {requestMagicLink.isError ? (
-        <Text style={styles.error}>Nao foi possivel enviar o link. Tente novamente.</Text>
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          Nao foi possivel enviar o link. Tente novamente.
+        </Text>
       ) : null}
 
       <Pressable
-        style={[styles.button, requestMagicLink.isPending && styles.buttonDisabled]}
+        style={({ pressed }) => [
+          styles.button,
+          pressed && !requestMagicLink.isPending && styles.buttonPressed,
+          requestMagicLink.isPending && styles.buttonDisabled,
+        ]}
         onPress={handleSubmit}
         disabled={requestMagicLink.isPending}
+        accessibilityRole="button"
+        accessibilityState={{
+          disabled: requestMagicLink.isPending,
+          busy: requestMagicLink.isPending,
+        }}
       >
         {requestMagicLink.isPending ? (
-          <ActivityIndicator color="#F7F6F2" />
+          <ActivityIndicator color={theme.colors.textOnPrimary} />
         ) : (
           <Text style={styles.buttonLabel}>Enviar link de acesso</Text>
         )}
@@ -71,31 +92,59 @@ export function MagicLinkForm() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 32, backgroundColor: '#F7F6F2' },
-  title: { fontSize: 42, fontWeight: '700', color: '#1C2B22' },
-  subtitle: { marginTop: 8, fontSize: 18, color: '#526258' },
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: theme.spacing.xl,
+      backgroundColor: theme.colors.background,
+    },
 
-  input: {
-    marginTop: 32,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    color: '#1C2B22',
-    fontSize: 16,
-  },
+    title: { ...theme.typography.title, color: theme.colors.textPrimary },
+    subtitle: {
+      ...theme.typography.body,
+      marginTop: theme.spacing.xs,
+      color: theme.colors.textSecondary,
+    },
+    lead: {
+      ...theme.typography.body,
+      marginTop: theme.spacing.lg,
+      color: theme.colors.textSecondary,
+    },
 
-  error: { marginTop: 12, fontSize: 14, color: '#B3261E' },
+    input: {
+      ...theme.typography.body,
+      marginTop: theme.spacing.xl,
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.outline,
+      backgroundColor: theme.colors.surfaceElevated,
+      color: theme.colors.textPrimary,
+    },
 
-  button: {
-    marginTop: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#1C2B22',
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonLabel: { fontSize: 16, fontWeight: '600', color: '#F7F6F2' },
-});
+    error: {
+      ...theme.typography.label,
+      marginTop: theme.spacing.sm,
+      color: theme.colors.error,
+    },
+
+    button: {
+      marginTop: theme.spacing.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.lg,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.primary,
+    },
+    buttonPressed: { backgroundColor: theme.colors.primaryPressed },
+    buttonDisabled: { opacity: 0.6 },
+    buttonLabel: {
+      ...theme.typography.bodyStrong,
+      color: theme.colors.textOnPrimary,
+    },
+  });

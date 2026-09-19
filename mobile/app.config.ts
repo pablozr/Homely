@@ -7,14 +7,14 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
 
   ios: { supportsTablet: true },
 
   android: {
     package: 'com.pablozr.homely',
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      backgroundColor: '#123D34',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png',
