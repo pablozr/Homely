@@ -59,3 +59,54 @@ export function useCancelTask() {
     },
   });
 }
+
+export function useCompleteTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { householdId: string; occurrenceId: string }) =>
+      tasksApi.completeTask(requireAccessToken(), input.householdId, input.occurrenceId),
+
+    onSuccess: (_data, { householdId }) => {
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey(householdId) });
+    },
+
+    onError: (_error, { householdId }) => {
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey(householdId) });
+    },
+  });
+}
+
+export function useUndoTaskCompletion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { householdId: string; occurrenceId: string }) =>
+      tasksApi.undoTaskCompletion(requireAccessToken(), input.householdId, input.occurrenceId),
+
+    onSuccess: (_data, { householdId }) => {
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey(householdId) });
+    },
+
+    onError: (_error, { householdId }) => {
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey(householdId) });
+    },
+  });
+}
+
+export function useCorrectTaskCompletion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { householdId: string; occurrenceId: string }) =>
+      tasksApi.correctTaskCompletion(requireAccessToken(), input.householdId, input.occurrenceId),
+
+    onSuccess: (_data, { householdId }) => {
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey(householdId) });
+    },
+
+    onError: (_error, { householdId }) => {
+      queryClient.invalidateQueries({ queryKey: tasksQueryKey(householdId) });
+    },
+  });
+}

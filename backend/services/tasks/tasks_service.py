@@ -22,8 +22,14 @@ CREATE_TASK_MESSAGE = "Task created"
 TASKS_MESSAGE = "Tasks retrieved"
 UPDATE_TASK_MESSAGE = "Task updated"
 CANCEL_TASK_MESSAGE = "Task cancelled"
+COMPLETE_TASK_MESSAGE = "Task completed"
+UNDO_COMPLETION_MESSAGE = "Task completion undone"
+CORRECT_COMPLETION_MESSAGE = "Task completion corrected"
 TASK_NOT_FOUND_MESSAGE = "Task not found"
 TASK_NOT_PENDING_MESSAGE = "Task is not pending"
+TASK_NOT_COMPLETED_MESSAGE = "Task is not completed"
+UNDO_NOT_AUTHOR_MESSAGE = "Only the completing member can undo"
+UNDO_EXPIRED_MESSAGE = "Undo window has expired"
 ASSIGNEE_INVALID_MESSAGE = "Assignee must be an active member of the household"
 DUE_NOT_FUTURE_MESSAGE = "Due must be in the future"
 IDEMPOTENCY_CONFLICT_MESSAGE = "Idempotency key was reused with a different request"
@@ -412,6 +418,224 @@ async def cancel_task(
                 "status": True,
                 "status_code": 200,
                 "message": CANCEL_TASK_MESSAGE,
+                "data": {"task": task_from_row(row)},
+            }
+    except Exception as exc:
+        logger.exception(exc)
+        return _error(500, INTERNAL_ERROR_MESSAGE)
+
+
+async def complete_task(
+    conn: asyncpg.Connection,
+    user_id,
+    household_id,
+    occurrence_id,
+) -> dict:
+    try:
+        async with conn.transaction():
+            _context, error = await households_service.lock_active_membership(
+                conn, household_id, user_id
+            )
+            if error:
+                return error
+
+            occurrence = await tasks_repository.lock_occurrence_status(
+                conn,
+                occurrence_id,
+                household_id,
+            )
+
+            if not occurrence:
+                return _error(404, TASK_NOT_FOUND_MESSAGE)
+
+            if occurrence["status"] == "DONE":
+                row = await tasks_repository.find_occurrence(
+                    conn, occurrence_id, household_id
+                )
+                return {
+                    "status": True,
+                    "status_code": 200,
+                    "message": COMPLETE_TASK_MESSAGE,
+                    "data": {"task": task_from_row(row)},
+                }
+
+            if occurrence["status"] != "PENDING":
+                return _error(409, TASK_NOT_PENDING_MESSAGE)
+
+            await tasks_repository.complete_task_occurrence(
+                conn,
+                occurrence_id,
+                household_id,
+                user_id,
+            )
+            await tasks_repository.insert_task_activity_event(
+                conn,
+                uuid4(),
+                household_id,
+                user_id,
+                occurrence_id,
+                "TASK_COMPLETED",
+                json.dumps(
+                    {
+                        "task_id": str(occurrence["task_id"]),
+                        "occurrence_id": str(occurrence_id),
+                    },
+                    separators=(",", ":"),
+                ),
+            )
+
+            row = await tasks_repository.find_occurrence(
+                conn, occurrence_id, household_id
+            )
+
+            return {
+                "status": True,
+                "status_code": 200,
+                "message": COMPLETE_TASK_MESSAGE,
+                "data": {"task": task_from_row(row)},
+            }
+    except Exception as exc:
+        logger.exception(exc)
+        return _error(500, INTERNAL_ERROR_MESSAGE)
+
+
+async def undo_task_completion(
+    conn: asyncpg.Connection,
+    user_id,
+    household_id,
+    occurrence_id,
+) -> dict:
+    try:
+        async with conn.transaction():
+            _context, error = await households_service.lock_active_membership(
+                conn, household_id, user_id
+            )
+            if error:
+                return error
+
+            occurrence = await tasks_repository.lock_task_completion(
+                conn,
+                occurrence_id,
+                household_id,
+            )
+
+            if not occurrence:
+                return _error(404, TASK_NOT_FOUND_MESSAGE)
+
+            if occurrence["status"] != "DONE":
+                return _error(409, TASK_NOT_COMPLETED_MESSAGE)
+
+            if occurrence["completed_by"] != user_id:
+                return _error(403, UNDO_NOT_AUTHOR_MESSAGE)
+
+            restored = await tasks_repository.undo_task_completion(
+                conn,
+                occurrence_id,
+                household_id,
+                user_id,
+            )
+
+            if not restored:
+                return _error(409, UNDO_EXPIRED_MESSAGE)
+
+            await tasks_repository.insert_task_activity_event(
+                conn,
+                uuid4(),
+                household_id,
+                user_id,
+                occurrence_id,
+                "TASK_COMPLETION_UNDONE",
+                json.dumps(
+                    {
+                        "task_id": str(occurrence["task_id"]),
+                        "occurrence_id": str(occurrence_id),
+                        "from_status": "DONE",
+                        "to_status": "PENDING",
+                        "original_completed_by": str(occurrence["completed_by"]),
+                        "original_completed_at": occurrence[
+                            "completed_at"
+                        ].isoformat(),
+                    },
+                    separators=(",", ":"),
+                ),
+            )
+
+            row = await tasks_repository.find_occurrence(
+                conn, occurrence_id, household_id
+            )
+
+            return {
+                "status": True,
+                "status_code": 200,
+                "message": UNDO_COMPLETION_MESSAGE,
+                "data": {"task": task_from_row(row)},
+            }
+    except Exception as exc:
+        logger.exception(exc)
+        return _error(500, INTERNAL_ERROR_MESSAGE)
+
+
+async def correct_task_completion(
+    conn: asyncpg.Connection,
+    user_id,
+    household_id,
+    occurrence_id,
+) -> dict:
+    try:
+        async with conn.transaction():
+            _context, error = await households_service.lock_active_membership(
+                conn, household_id, user_id
+            )
+            if error:
+                return error
+
+            occurrence = await tasks_repository.lock_task_completion(
+                conn,
+                occurrence_id,
+                household_id,
+            )
+
+            if not occurrence:
+                return _error(404, TASK_NOT_FOUND_MESSAGE)
+
+            if occurrence["status"] != "DONE":
+                return _error(409, TASK_NOT_COMPLETED_MESSAGE)
+
+            await tasks_repository.correct_task_completion(
+                conn,
+                occurrence_id,
+                household_id,
+            )
+            await tasks_repository.insert_task_activity_event(
+                conn,
+                uuid4(),
+                household_id,
+                user_id,
+                occurrence_id,
+                "TASK_COMPLETION_CORRECTED",
+                json.dumps(
+                    {
+                        "task_id": str(occurrence["task_id"]),
+                        "occurrence_id": str(occurrence_id),
+                        "from_status": "DONE",
+                        "to_status": "PENDING",
+                        "original_completed_by": str(occurrence["completed_by"]),
+                        "original_completed_at": occurrence[
+                            "completed_at"
+                        ].isoformat(),
+                    },
+                    separators=(",", ":"),
+                ),
+            )
+
+            row = await tasks_repository.find_occurrence(
+                conn, occurrence_id, household_id
+            )
+
+            return {
+                "status": True,
+                "status_code": 200,
+                "message": CORRECT_COMPLETION_MESSAGE,
                 "data": {"task": task_from_row(row)},
             }
     except Exception as exc:

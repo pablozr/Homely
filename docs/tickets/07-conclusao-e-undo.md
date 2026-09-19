@@ -4,9 +4,9 @@
 
 **Blocked by:** 06 - Criar e listar tarefas avulsas.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] A primeira transicao atomica de PENDING para DONE define `completed_by` e `completed_at`; tentativas posteriores retornam o estado atual.
-- [ ] O autor conclui e pode desfazer em 10 segundos; membros ativos podem corrigir posteriormente por acao explicita auditada.
-- [ ] A Home e a tela de Tarefas oferecem conclusao em um toque e feedback imediato apos confirmacao do backend.
-- [ ] Testes cobrem concorrencia, undo condicionado, auditoria e autorizacao.
+- [x] A primeira transicao atomica de PENDING para DONE define `completed_by` e `completed_at`; tentativas posteriores retornam o estado atual.
+- [x] O autor conclui e pode desfazer em 10 segundos; membros ativos podem corrigir posteriormente por acao explicita auditada.
+- [x] A Home e a tela de Tarefas oferecem conclusao em um toque e feedback imediato apos confirmacao do backend.
+- [x] Testes cobrem concorrencia, undo condicionado, auditoria e autorizacao.

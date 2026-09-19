@@ -87,3 +87,57 @@ async def cancel_task(
         membership["household_id"],
         occurrence_id,
     )
+
+
+@router.post(
+    "/{household_id}/tasks/{occurrence_id}/complete",
+    response_model=TaskResponseModel,
+)
+async def complete_task(
+    occurrence_id: UUID,
+    membership: dict = Depends(households.require_active_membership),
+    conn: asyncpg.Connection = Depends(postgresql.get_db),
+):
+    return await default_response(
+        tasks_service.complete_task,
+        conn,
+        membership["user_id"],
+        membership["household_id"],
+        occurrence_id,
+    )
+
+
+@router.post(
+    "/{household_id}/tasks/{occurrence_id}/undo-completion",
+    response_model=TaskResponseModel,
+)
+async def undo_task_completion(
+    occurrence_id: UUID,
+    membership: dict = Depends(households.require_active_membership),
+    conn: asyncpg.Connection = Depends(postgresql.get_db),
+):
+    return await default_response(
+        tasks_service.undo_task_completion,
+        conn,
+        membership["user_id"],
+        membership["household_id"],
+        occurrence_id,
+    )
+
+
+@router.post(
+    "/{household_id}/tasks/{occurrence_id}/correct-completion",
+    response_model=TaskResponseModel,
+)
+async def correct_task_completion(
+    occurrence_id: UUID,
+    membership: dict = Depends(households.require_active_membership),
+    conn: asyncpg.Connection = Depends(postgresql.get_db),
+):
+    return await default_response(
+        tasks_service.correct_task_completion,
+        conn,
+        membership["user_id"],
+        membership["household_id"],
+        occurrence_id,
+    )

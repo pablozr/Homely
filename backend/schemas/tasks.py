@@ -99,6 +99,8 @@ class TaskModel(BaseModel):
     updated_at: str
     cancelled_at: str | None
     cancelled_by: UUID | None
+    completed_by: UUID | None
+    completed_at: str | None
 
 
 class TaskEnvelopeModel(BaseModel):
@@ -166,6 +168,14 @@ def task_from_row(row, now: datetime | None = None) -> dict:
         ),
         "cancelled_by": (
             str(row["cancelled_by"]) if row["cancelled_by"] is not None else None
+        ),
+        "completed_by": (
+            str(row["completed_by"]) if row["completed_by"] is not None else None
+        ),
+        "completed_at": (
+            row["completed_at"].isoformat()
+            if row["completed_at"] is not None
+            else None
         ),
     }
 

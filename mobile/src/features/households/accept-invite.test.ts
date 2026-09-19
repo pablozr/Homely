@@ -242,7 +242,7 @@ test('acceptInvite does not activate a household when the request fails', async 
 
   mockJson(context, { message: 'Invite unavailable', data: {} }, 409);
 
-  await assert.rejects(acceptInvite('token-1'), /API request failed: 409/);
+  await assert.rejects(acceptInvite('token-1'), /Invite unavailable/);
 
   assert.equal(useActiveHouseholdStore.getState().activeHouseholdId, 'h0');
 });

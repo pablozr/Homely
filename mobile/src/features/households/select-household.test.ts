@@ -65,7 +65,7 @@ test('selectHousehold does not update the active household when the request fail
 
   mockJson(context, { message: 'Unavailable', data: {} }, 503);
 
-  await assert.rejects(selectHousehold('h2'), /API request failed: 503/);
+  await assert.rejects(selectHousehold('h2'), /Unavailable/);
 
   assert.equal(useActiveHouseholdStore.getState().activeHouseholdId, 'h1');
 });

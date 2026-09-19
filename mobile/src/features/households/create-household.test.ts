@@ -101,7 +101,7 @@ test('createHousehold keeps the previous active household on failure', async (co
 
   await assert.rejects(
     createHousehold({ name: 'Casa', timezone: 'UTC', idempotencyKey: 'idem-1' }),
-    /API request failed: 503/,
+    /Unavailable/,
   );
 
   assert.equal(useActiveHouseholdStore.getState().activeHouseholdId, 'h0');

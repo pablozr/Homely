@@ -10,8 +10,16 @@ import { useHouseholdMembers } from '@/features/households/queries';
 import type { HouseholdSummary } from '@/features/households/types';
 import { useSessionStore } from '@/stores/session';
 
-import { useCancelTask, useCreateTask, useUpdateTask } from '../mutations';
-import { usePendingTasks } from '../queries';
+import { isUndoExpiredError, partitionTasksByStatus, resolveCompletionAction } from '../completion';
+import {
+  useCancelTask,
+  useCompleteTask,
+  useCorrectTaskCompletion,
+  useCreateTask,
+  useUndoTaskCompletion,
+  useUpdateTask,
+} from '../mutations';
+import { useHouseholdTasks } from '../queries';
 import { toTaskRequestBody, toTaskUpdateRequest, type TaskFormValues } from '../schemas';
 import type { Task } from '../types';
 import { TaskCard } from './TaskCard';
@@ -23,23 +31,36 @@ type TaskListPanelProps = {
 
 type TaskFormMode = { kind: 'closed' } | { kind: 'create' } | { kind: 'edit'; task: Task };
 
+type StatusFeedback = { message: string; tone: 'success' | 'error' };
+
 export function TaskListPanel({ household }: TaskListPanelProps) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const currentUserId = useSessionStore((state) => state.user?.id ?? null);
-  const tasksQuery = usePendingTasks(household.id);
+  const tasksQuery = useHouseholdTasks(household.id);
   const membersQuery = useHouseholdMembers(household.id);
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const cancelTask = useCancelTask();
+  const completeTask = useCompleteTask();
+  const undoTaskCompletion = useUndoTaskCompletion();
+  const correctTaskCompletion = useCorrectTaskCompletion();
   const attemptRef = useRef<IdempotencyAttempt | null>(null);
   const [mode, setMode] = useState<TaskFormMode>({ kind: 'closed' });
+  const [expiredCompletionIds, setExpiredCompletionIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [status, setStatus] = useState<StatusFeedback | null>(null);
 
   const members = (membersQuery.data?.data.memberships ?? []).filter(
     (member) => member.status === 'ACTIVE',
   );
   const tasks = tasksQuery.data?.data.tasks ?? [];
+  const { pending: pendingTasks, completed: completedTasks } = partitionTasksByStatus(tasks);
   const isSubmitting = createTask.isPending || updateTask.isPending;
+  const isCompleting =
+    completeTask.isPending || undoTaskCompletion.isPending || correctTaskCompletion.isPending;
+  const busy = isSubmitting || cancelTask.isPending || isCompleting;
   const formError =
     mode.kind === 'edit'
       ? updateTask.isError
@@ -52,6 +73,118 @@ export function TaskListPanel({ household }: TaskListPanelProps) {
   function closeForm() {
     attemptRef.current = null;
     setMode({ kind: 'closed' });
+  }
+
+  // The panel is keyed by household id by its parent, so switching households
+  // remounts it and clears the per-household expiry set below.
+
+  function markCompletionExpired(occurrenceId: string) {
+    setExpiredCompletionIds((current) => {
+      if (current.has(occurrenceId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(occurrenceId);
+      return next;
+    });
+  }
+
+  // A fresh completion starts a new undo window for the same occurrence, so any
+  // earlier expiry marker must not suppress the new Undo affordance.
+  function clearCompletionExpired(occurrenceId: string) {
+    setExpiredCompletionIds((current) => {
+      if (!current.has(occurrenceId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(occurrenceId);
+      return next;
+    });
+  }
+
+  function handleComplete(task: Task) {
+    completeTask.mutate(
+      { householdId: household.id, occurrenceId: task.occurrence_id },
+      {
+        onSuccess: (response) => {
+          clearCompletionExpired(task.occurrence_id);
+          setStatus({ message: `"${response.data.task.title}" concluída.`, tone: 'success' });
+        },
+        onError: () => {
+          setStatus({
+            message: 'Nao foi possivel concluir a tarefa. Tente novamente.',
+            tone: 'error',
+          });
+        },
+      },
+    );
+  }
+
+  function handleUndo(task: Task) {
+    undoTaskCompletion.mutate(
+      { householdId: household.id, occurrenceId: task.occurrence_id },
+      {
+        onSuccess: () => {
+          clearCompletionExpired(task.occurrence_id);
+          setStatus({ message: 'Conclusão desfeita.', tone: 'success' });
+        },
+        onError: (error) => {
+          // The server is the authority on the undo window. Once it rejects an
+          // undo as expired, remember it locally so the next render offers the
+          // explicit correction action instead of a stale undo.
+          if (isUndoExpiredError(error)) {
+            markCompletionExpired(task.occurrence_id);
+            setStatus({
+              message: 'A janela para desfazer expirou. Use "Corrigir conclusão".',
+              tone: 'error',
+            });
+            return;
+          }
+
+          setStatus({
+            message: 'Nao foi possivel desfazer a conclusao. Tente novamente.',
+            tone: 'error',
+          });
+        },
+      },
+    );
+  }
+
+  function handleCorrect(task: Task) {
+    Alert.alert('Corrigir conclusão', `Reabrir "${task.title}" como pendente?`, [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: 'Corrigir',
+        style: 'destructive',
+        onPress: () =>
+          correctTaskCompletion.mutate(
+            { householdId: household.id, occurrenceId: task.occurrence_id },
+            {
+              onSuccess: () => {
+                clearCompletionExpired(task.occurrence_id);
+                setStatus({ message: 'Conclusão corrigida.', tone: 'success' });
+              },
+              onError: () => {
+                setStatus({
+                  message: 'Nao foi possivel corrigir a conclusao. Tente novamente.',
+                  tone: 'error',
+                });
+              },
+            },
+          ),
+      },
+    ]);
+  }
+
+  function handleCompletionAction(task: Task) {
+    if (resolveCompletionAction(task, currentUserId, expiredCompletionIds) === 'undo') {
+      handleUndo(task);
+      return;
+    }
+
+    handleCorrect(task);
   }
 
   function handleSubmit(values: TaskFormValues) {
@@ -148,21 +281,62 @@ export function TaskListPanel({ household }: TaskListPanelProps) {
         </View>
       ) : null}
 
-      {!tasksQuery.isPending && !tasksQuery.isError && tasks.length === 0 ? (
-        <Text style={styles.empty}>Nenhuma tarefa pendente.</Text>
+      {!tasksQuery.isPending && !tasksQuery.isError ? (
+        <>
+          {pendingTasks.length === 0 ? (
+            <Text style={styles.empty}>Nenhuma tarefa pendente.</Text>
+          ) : (
+            pendingTasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                timezone={household.timezone}
+                isOwnTask={currentUserId !== null && task.assignee?.user_id === currentUserId}
+                busy={busy}
+                onComplete={handleComplete}
+                onEdit={(selected) => setMode({ kind: 'edit', task: selected })}
+                onCancel={handleCancel}
+              />
+            ))
+          )}
+
+          {completedTasks.length > 0 ? (
+            <View style={styles.completedSection}>
+              <Text style={styles.completedHeading}>Concluídas</Text>
+              {completedTasks.map((task) => {
+                const action = resolveCompletionAction(task, currentUserId, expiredCompletionIds);
+
+                return (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    timezone={household.timezone}
+                    isOwnTask={currentUserId !== null && task.assignee?.user_id === currentUserId}
+                    busy={busy}
+                    completionAction={{
+                      label: action === 'undo' ? 'Desfazer' : 'Corrigir conclusão',
+                      accessibilityLabel:
+                        action === 'undo'
+                          ? `Desfazer conclusão da tarefa ${task.title}`
+                          : `Corrigir conclusão da tarefa ${task.title}`,
+                      onPress: handleCompletionAction,
+                    }}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
+        </>
       ) : null}
 
-      {tasks.map((task) => (
-        <TaskCard
-          key={task.id}
-          task={task}
-          timezone={household.timezone}
-          isOwnTask={currentUserId !== null && task.assignee?.user_id === currentUserId}
-          busy={isSubmitting || cancelTask.isPending}
-          onEdit={(selected) => setMode({ kind: 'edit', task: selected })}
-          onCancel={handleCancel}
-        />
-      ))}
+      {status ? (
+        <Text
+          style={[styles.feedback, status.tone === 'error' && styles.feedbackError]}
+          accessibilityLiveRegion="polite"
+        >
+          {status.message}
+        </Text>
+      ) : null}
 
       {cancelTask.isError ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -223,4 +397,19 @@ const createStyles = (theme: Theme) =>
       color: theme.colors.textMuted,
     },
     error: { ...theme.typography.label, marginTop: theme.spacing.sm, color: theme.colors.error },
+
+    completedSection: { marginTop: theme.spacing.lg },
+    completedHeading: {
+      ...theme.typography.label,
+      color: theme.colors.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+
+    feedback: {
+      ...theme.typography.label,
+      marginTop: theme.spacing.sm,
+      color: theme.colors.success,
+    },
+    feedbackError: { color: theme.colors.error },
   });

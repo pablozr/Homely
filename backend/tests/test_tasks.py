@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -27,6 +28,15 @@ MIGRATION_PATH = (
     / "versions"
     / "0006_tasks_and_occurrences.py"
 )
+
+COMPLETION_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "versions"
+    / "0007_task_completion.py"
+)
+
+_UNSET = object()
 
 
 class Transaction:
@@ -83,6 +93,8 @@ def occurrence_row(**overrides):
         "updated_at": created_at(),
         "cancelled_at": None,
         "cancelled_by": None,
+        "completed_by": None,
+        "completed_at": None,
         "assignee_user_id": None,
         "assignee_fullname": None,
     }
@@ -110,6 +122,8 @@ def task_data(**overrides):
         "updated_at": created_at().isoformat(),
         "cancelled_at": None,
         "cancelled_by": None,
+        "completed_by": None,
+        "completed_at": None,
     }
     data.update(overrides)
 
@@ -122,6 +136,67 @@ def executed_args(connection, marker):
         for call in connection.execute.await_args_list
         if marker in call.args[0]
     ]
+
+
+def completion_occurrence(**overrides):
+    row = {
+        "id": uuid4(),
+        "task_id": uuid4(),
+        "household_id": uuid4(),
+        "status": "PENDING",
+        "completed_by": None,
+        "completed_at": None,
+    }
+    row.update(overrides)
+
+    return row
+
+
+def completion_connection(
+    occurrence,
+    *,
+    household=_UNSET,
+    membership=_UNSET,
+    undo_result="UPDATE 1",
+):
+    connection = FakeConnection()
+    household_id = (
+        occurrence["household_id"] if occurrence is not None else uuid4()
+    )
+
+    def on_fetchrow(query, *args):
+        if "SELECT id, deactivated_at FROM households" in query:
+            if household is _UNSET:
+                return {"id": household_id, "deactivated_at": None}
+            return household
+        if "SELECT id, role" in query and "FROM household_members" in query:
+            if membership is _UNSET:
+                return {"id": uuid4(), "role": "MEMBER"}
+            return membership
+        if "SELECT id, task_id, status" in query:
+            return dict(occurrence) if occurrence is not None else None
+        if "FROM task_occurrences o" in query:
+            return occurrence_row(
+                occurrence_id=occurrence["id"],
+                task_id=occurrence["task_id"],
+                household_id=occurrence["household_id"],
+                status=occurrence["status"],
+                completed_by=occurrence["completed_by"],
+                completed_at=occurrence["completed_at"],
+            )
+
+        raise AssertionError(f"unexpected query: {query}")
+
+    connection.fetchrow.side_effect = on_fetchrow
+
+    def on_execute(query, *args):
+        if "completed_at + interval '10 seconds'" in query:
+            return undo_result
+        return ""
+
+    connection.execute.side_effect = on_execute
+
+    return connection
 
 
 class TaskCreateSchemaTests(unittest.TestCase):
@@ -581,7 +656,7 @@ class CreateTaskTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ListTasksTests(unittest.IsolatedAsyncioTestCase):
-    async def test_returns_pending_tasks_in_priority_order(self):
+    async def test_returns_pending_and_done_tasks_in_priority_order(self):
         household_id = uuid4()
         overdue = occurrence_row(
             household_id=household_id,
@@ -591,9 +666,30 @@ class ListTasksTests(unittest.IsolatedAsyncioTestCase):
         no_due = occurrence_row(household_id=household_id)
 
         def on_fetch(query, *args):
-            self.assertIn("o.status = 'PENDING'", query)
+            self.assertIn("o.status IN ('PENDING', 'DONE')", query)
+            self.assertNotIn("CANCELLED", query)
             self.assertIn(
-                "ORDER BY o.due_at ASC NULLS LAST, o.created_at ASC, o.id ASC",
+                "CASE o.status WHEN 'PENDING' THEN 0 ELSE 1 END",
+                query,
+            )
+            self.assertIn(
+                "CASE WHEN o.status = 'PENDING' THEN o.due_at END ASC NULLS LAST",
+                query,
+            )
+            self.assertIn(
+                "CASE WHEN o.status = 'PENDING' THEN o.created_at END ASC",
+                query,
+            )
+            self.assertIn(
+                "CASE WHEN o.status = 'DONE' THEN o.completed_at END DESC NULLS LAST",
+                query,
+            )
+            self.assertIn(
+                "CASE WHEN o.status = 'PENDING' THEN o.id END ASC",
+                query,
+            )
+            self.assertIn(
+                "CASE WHEN o.status = 'DONE' THEN o.id END DESC",
                 query,
             )
             self.assertEqual(args[0], household_id)
@@ -609,6 +705,34 @@ class ListTasksTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["data"]["tasks"]), 2)
         self.assertTrue(result["data"]["tasks"][0]["is_overdue"])
         self.assertIsNone(result["data"]["tasks"][1]["due_at"])
+
+    async def test_projects_pending_and_completed_task_fields(self):
+        household_id = uuid4()
+        completed_by = uuid4()
+        completed_at = datetime(2026, 9, 19, 13, 0, tzinfo=timezone.utc)
+        done = occurrence_row(
+            household_id=household_id,
+            status="DONE",
+            completed_by=completed_by,
+            completed_at=completed_at,
+        )
+        pending = occurrence_row(household_id=household_id)
+
+        connection = FakeConnection(on_fetch=lambda *a: [pending, done])
+
+        result = await tasks_service.list_tasks(connection, household_id)
+
+        tasks = result["data"]["tasks"]
+        self.assertEqual(
+            [task["status"] for task in tasks],
+            ["PENDING", "DONE"],
+        )
+        self.assertIsNone(tasks[0]["completed_by"])
+        self.assertIsNone(tasks[0]["completed_at"])
+        self.assertFalse(tasks[0]["is_overdue"])
+        self.assertEqual(tasks[1]["completed_by"], str(completed_by))
+        self.assertEqual(tasks[1]["completed_at"], completed_at.isoformat())
+        self.assertFalse(tasks[1]["is_overdue"])
 
     async def test_returns_an_empty_list(self):
         connection = FakeConnection(on_fetch=lambda *a: [])
@@ -975,6 +1099,437 @@ class CancelTaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status_code"], 404)
 
 
+class CompleteTaskTests(unittest.IsolatedAsyncioTestCase):
+    async def test_active_member_completes_pending_task_and_writes_single_audit(
+        self,
+    ):
+        user_id = uuid4()
+        completed_at = created_at()
+        occurrence = completion_occurrence()
+        connection = completion_connection(occurrence)
+
+        def on_execute(query, *args):
+            if "completed_at = clock_timestamp()" in query:
+                occurrence["status"] = "DONE"
+                occurrence["completed_by"] = user_id
+                occurrence["completed_at"] = completed_at
+            return ""
+
+        connection.execute.side_effect = on_execute
+
+        result = await tasks_service.complete_task(
+            connection, user_id, occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertTrue(result["status"])
+        self.assertEqual(result["status_code"], 200)
+        self.assertEqual(result["message"], "Task completed")
+        self.assertEqual(connection.transactions, 1)
+
+        task = result["data"]["task"]
+        self.assertEqual(task["status"], "DONE")
+        self.assertEqual(task["completed_by"], str(user_id))
+        self.assertEqual(task["completed_at"], completed_at.isoformat())
+
+        completion_update = executed_args(connection, "UPDATE task_occurrences")[0]
+        self.assertIn("clock_timestamp()", completion_update[0])
+        self.assertIn("status = 'PENDING'", completion_update[0])
+        self.assertEqual(completion_update[1], occurrence["id"])
+        self.assertEqual(completion_update[2], occurrence["household_id"])
+        self.assertEqual(completion_update[3], user_id)
+
+        audits = executed_args(connection, "INSERT INTO activity_events")
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0][5], "TASK_COMPLETED")
+        metadata = json.loads(audits[0][6])
+        self.assertEqual(metadata["task_id"], str(occurrence["task_id"]))
+        self.assertEqual(metadata["occurrence_id"], str(occurrence["id"]))
+
+    async def test_repeated_completion_returns_current_without_writes(self):
+        user_id = uuid4()
+        completed_at = created_at()
+        occurrence = completion_occurrence()
+        connection = completion_connection(occurrence)
+
+        def on_execute(query, *args):
+            if "completed_at = clock_timestamp()" in query:
+                occurrence["status"] = "DONE"
+                occurrence["completed_by"] = user_id
+                occurrence["completed_at"] = completed_at
+            return ""
+
+        connection.execute.side_effect = on_execute
+
+        first = await tasks_service.complete_task(
+            connection, user_id, occurrence["household_id"], occurrence["id"]
+        )
+        second = await tasks_service.complete_task(
+            connection, user_id, occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertEqual(first["status_code"], 200)
+        self.assertEqual(second["status_code"], 200)
+        self.assertEqual(second["data"]["task"]["completed_by"], str(user_id))
+        self.assertEqual(
+            len(executed_args(connection, "UPDATE task_occurrences")), 1
+        )
+        self.assertEqual(
+            len(executed_args(connection, "INSERT INTO activity_events")), 1
+        )
+
+    async def test_rejects_a_task_that_is_not_pending(self):
+        for status in ("CANCELLED", "SKIPPED"):
+            with self.subTest(status=status):
+                occurrence = completion_occurrence(status=status)
+                connection = completion_connection(occurrence)
+
+                result = await tasks_service.complete_task(
+                    connection,
+                    uuid4(),
+                    occurrence["household_id"],
+                    occurrence["id"],
+                )
+
+                self.assertFalse(result["status"])
+                self.assertEqual(result["status_code"], 409)
+                self.assertEqual(result["message"], "Task is not pending")
+                self.assertFalse(
+                    executed_args(connection, "UPDATE task_occurrences")
+                )
+                self.assertFalse(
+                    executed_args(connection, "INSERT INTO activity_events")
+                )
+
+    async def test_returns_not_found_for_an_unknown_occurrence(self):
+        connection = completion_connection(None)
+
+        result = await tasks_service.complete_task(
+            connection, uuid4(), uuid4(), uuid4()
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 404)
+        self.assertFalse(executed_args(connection, "UPDATE task_occurrences"))
+
+    async def test_propagates_household_and_membership_errors(self):
+        cases = [
+            (None, 404),
+            ({"id": uuid4(), "deactivated_at": datetime.now(timezone.utc)}, 409),
+            ({"id": uuid4(), "deactivated_at": None}, 403),
+        ]
+
+        for household, expected in cases:
+            with self.subTest(expected=expected):
+                membership = (
+                    None if expected == 403 else {"id": uuid4(), "role": "MEMBER"}
+                )
+                occurrence = completion_occurrence()
+                connection = completion_connection(
+                    occurrence, household=household, membership=membership
+                )
+
+                result = await tasks_service.complete_task(
+                    connection,
+                    uuid4(),
+                    occurrence["household_id"],
+                    occurrence["id"],
+                )
+
+                self.assertFalse(result["status"])
+                self.assertEqual(result["status_code"], expected)
+
+
+class UndoTaskCompletionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_author_undoes_done_task_and_audits_original_completion(self):
+        user_id = uuid4()
+        completed_at = created_at()
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=user_id,
+            completed_at=completed_at,
+        )
+        connection = completion_connection(occurrence)
+
+        def on_execute(query, *args):
+            if "completed_at + interval '10 seconds'" in query:
+                occurrence["status"] = "PENDING"
+                occurrence["completed_by"] = None
+                occurrence["completed_at"] = None
+                return "UPDATE 1"
+            return ""
+
+        connection.execute.side_effect = on_execute
+
+        result = await tasks_service.undo_task_completion(
+            connection, user_id, occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertTrue(result["status"])
+        self.assertEqual(result["status_code"], 200)
+        self.assertEqual(result["message"], "Task completion undone")
+
+        task = result["data"]["task"]
+        self.assertEqual(task["status"], "PENDING")
+        self.assertIsNone(task["completed_by"])
+        self.assertIsNone(task["completed_at"])
+
+        restore = executed_args(connection, "UPDATE task_occurrences")[0]
+        self.assertIn("status = 'PENDING'", restore[0])
+        self.assertIn(
+            "completed_at + interval '10 seconds' >= clock_timestamp()",
+            restore[0],
+        )
+        self.assertEqual(restore[1], occurrence["id"])
+        self.assertEqual(restore[2], occurrence["household_id"])
+        self.assertEqual(restore[3], user_id)
+
+        audits = executed_args(connection, "INSERT INTO activity_events")
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0][5], "TASK_COMPLETION_UNDONE")
+        metadata = json.loads(audits[0][6])
+        self.assertEqual(metadata["task_id"], str(occurrence["task_id"]))
+        self.assertEqual(metadata["occurrence_id"], str(occurrence["id"]))
+        self.assertEqual(metadata["from_status"], "DONE")
+        self.assertEqual(metadata["to_status"], "PENDING")
+        self.assertEqual(metadata["original_completed_by"], str(user_id))
+        self.assertEqual(
+            metadata["original_completed_at"], completed_at.isoformat()
+        )
+
+    async def test_accepts_the_exact_ten_second_boundary(self):
+        user_id = uuid4()
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=user_id,
+            completed_at=created_at(),
+        )
+        connection = completion_connection(occurrence, undo_result="UPDATE 1")
+
+        result = await tasks_service.undo_task_completion(
+            connection, user_id, occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertEqual(result["status_code"], 200)
+        restore = executed_args(connection, "UPDATE task_occurrences")[0]
+        self.assertIn(">= clock_timestamp()", restore[0])
+
+    async def test_expired_window_returns_conflict_without_audit(self):
+        user_id = uuid4()
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=user_id,
+            completed_at=created_at(),
+        )
+        connection = completion_connection(occurrence, undo_result="UPDATE 0")
+
+        result = await tasks_service.undo_task_completion(
+            connection, user_id, occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 409)
+        self.assertEqual(result["message"], "Undo window has expired")
+        self.assertEqual(
+            len(executed_args(connection, "UPDATE task_occurrences")), 1
+        )
+        self.assertFalse(executed_args(connection, "INSERT INTO activity_events"))
+
+    async def test_other_actor_cannot_undo(self):
+        author_id = uuid4()
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=author_id,
+            completed_at=created_at(),
+        )
+        connection = completion_connection(occurrence)
+
+        result = await tasks_service.undo_task_completion(
+            connection, uuid4(), occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 403)
+        self.assertEqual(result["message"], "Only the completing member can undo")
+        self.assertFalse(executed_args(connection, "UPDATE task_occurrences"))
+        self.assertFalse(executed_args(connection, "INSERT INTO activity_events"))
+
+    async def test_requires_a_completed_task(self):
+        occurrence = completion_occurrence()
+        connection = completion_connection(occurrence)
+
+        result = await tasks_service.undo_task_completion(
+            connection, uuid4(), occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 409)
+        self.assertEqual(result["message"], "Task is not completed")
+        self.assertFalse(executed_args(connection, "UPDATE task_occurrences"))
+
+    async def test_returns_not_found_for_an_unknown_occurrence(self):
+        connection = completion_connection(None)
+
+        result = await tasks_service.undo_task_completion(
+            connection, uuid4(), uuid4(), uuid4()
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 404)
+
+
+class CorrectTaskCompletionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_active_member_corrects_completion_and_audits_original(self):
+        author_id = uuid4()
+        corrector_id = uuid4()
+        completed_at = created_at()
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=author_id,
+            completed_at=completed_at,
+        )
+        connection = completion_connection(occurrence)
+
+        def on_execute(query, *args):
+            if (
+                "status = 'PENDING'" in query
+                and "status = 'DONE'" in query
+                and "completed_at + interval" not in query
+            ):
+                occurrence["status"] = "PENDING"
+                occurrence["completed_by"] = None
+                occurrence["completed_at"] = None
+            return ""
+
+        connection.execute.side_effect = on_execute
+
+        result = await tasks_service.correct_task_completion(
+            connection,
+            corrector_id,
+            occurrence["household_id"],
+            occurrence["id"],
+        )
+
+        self.assertTrue(result["status"])
+        self.assertEqual(result["status_code"], 200)
+        self.assertEqual(result["message"], "Task completion corrected")
+
+        task = result["data"]["task"]
+        self.assertEqual(task["status"], "PENDING")
+        self.assertIsNone(task["completed_by"])
+        self.assertIsNone(task["completed_at"])
+
+        restore = executed_args(connection, "UPDATE task_occurrences")[0]
+        self.assertIn("status = 'PENDING'", restore[0])
+        self.assertNotIn("interval '10 seconds'", restore[0])
+
+        audits = executed_args(connection, "INSERT INTO activity_events")
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0][5], "TASK_COMPLETION_CORRECTED")
+        metadata = json.loads(audits[0][6])
+        self.assertEqual(metadata["from_status"], "DONE")
+        self.assertEqual(metadata["to_status"], "PENDING")
+        self.assertEqual(metadata["original_completed_by"], str(author_id))
+        self.assertEqual(
+            metadata["original_completed_at"], completed_at.isoformat()
+        )
+
+    async def test_requires_a_completed_task(self):
+        occurrence = completion_occurrence()
+        connection = completion_connection(occurrence)
+
+        result = await tasks_service.correct_task_completion(
+            connection, uuid4(), occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 409)
+        self.assertEqual(result["message"], "Task is not completed")
+        self.assertFalse(executed_args(connection, "UPDATE task_occurrences"))
+
+    async def test_returns_not_found_for_an_unknown_occurrence(self):
+        connection = completion_connection(None)
+
+        result = await tasks_service.correct_task_completion(
+            connection, uuid4(), uuid4(), uuid4()
+        )
+
+        self.assertFalse(result["status"])
+        self.assertEqual(result["status_code"], 404)
+
+    async def test_undo_wins_the_race_and_later_correction_conflicts(self):
+        author_id = uuid4()
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=author_id,
+            completed_at=created_at(),
+        )
+        connection = completion_connection(occurrence, undo_result="UPDATE 1")
+
+        def on_execute(query, *args):
+            if "completed_at + interval '10 seconds'" in query:
+                occurrence["status"] = "PENDING"
+                occurrence["completed_by"] = None
+                occurrence["completed_at"] = None
+                return "UPDATE 1"
+            return ""
+
+        connection.execute.side_effect = on_execute
+
+        undo = await tasks_service.undo_task_completion(
+            connection, author_id, occurrence["household_id"], occurrence["id"]
+        )
+        correction = await tasks_service.correct_task_completion(
+            connection, uuid4(), occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertEqual(undo["status_code"], 200)
+        self.assertFalse(correction["status"])
+        self.assertEqual(correction["status_code"], 409)
+        self.assertEqual(correction["message"], "Task is not completed")
+
+    async def test_recompletion_after_correction_starts_a_new_cycle(self):
+        author_id = uuid4()
+        corrector_id = uuid4()
+        first_completed_at = created_at()
+        second_completed_at = created_at() + timedelta(minutes=5)
+        occurrence = completion_occurrence(
+            status="DONE",
+            completed_by=author_id,
+            completed_at=first_completed_at,
+        )
+        connection = completion_connection(occurrence)
+
+        def on_execute(query, *args):
+            if "completed_at = clock_timestamp()" in query:
+                occurrence["status"] = "DONE"
+                occurrence["completed_by"] = corrector_id
+                occurrence["completed_at"] = second_completed_at
+            elif "status = 'PENDING'" in query and "status = 'DONE'" in query:
+                occurrence["status"] = "PENDING"
+                occurrence["completed_by"] = None
+                occurrence["completed_at"] = None
+            return ""
+
+        connection.execute.side_effect = on_execute
+
+        correction = await tasks_service.correct_task_completion(
+            connection, corrector_id, occurrence["household_id"], occurrence["id"]
+        )
+        completion = await tasks_service.complete_task(
+            connection, corrector_id, occurrence["household_id"], occurrence["id"]
+        )
+
+        self.assertEqual(correction["status_code"], 200)
+        self.assertEqual(completion["status_code"], 200)
+        self.assertEqual(
+            completion["data"]["task"]["completed_by"], str(corrector_id)
+        )
+        self.assertEqual(
+            completion["data"]["task"]["completed_at"],
+            second_completed_at.isoformat(),
+        )
+
+
 class TaskRouteTests(unittest.TestCase):
     def setUp(self):
         self.user_id = uuid4()
@@ -1134,6 +1689,102 @@ class TaskRouteTests(unittest.TestCase):
         )
         self.assertEqual(service.await_args.args[3], occurrence_id)
 
+    def test_complete_returns_the_standard_envelope(self):
+        occurrence_id = uuid4()
+        data = {
+            "task": task_data(
+                occurrence_id=occurrence_id,
+                status="DONE",
+                completed_by=str(self.user_id),
+                completed_at=created_at().isoformat(),
+            )
+        }
+        service = AsyncMock(
+            return_value={
+                "status": True,
+                "status_code": 200,
+                "message": "Task completed",
+                "data": data,
+            }
+        )
+
+        with patch.object(tasks_service, "complete_task", service):
+            response = self.client.post(
+                f"/households/{self.household_id}/tasks/{occurrence_id}/complete"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(), {"message": "Task completed", "data": data}
+        )
+        self.assertEqual(service.await_args.args[3], occurrence_id)
+
+    def test_undo_completion_returns_the_standard_envelope(self):
+        occurrence_id = uuid4()
+        data = {"task": task_data(occurrence_id=occurrence_id)}
+        service = AsyncMock(
+            return_value={
+                "status": True,
+                "status_code": 200,
+                "message": "Task completion undone",
+                "data": data,
+            }
+        )
+
+        with patch.object(tasks_service, "undo_task_completion", service):
+            response = self.client.post(
+                f"/households/{self.household_id}/tasks/"
+                f"{occurrence_id}/undo-completion"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"message": "Task completion undone", "data": data},
+        )
+        self.assertEqual(service.await_args.args[3], occurrence_id)
+
+    def test_correct_completion_returns_the_standard_envelope(self):
+        occurrence_id = uuid4()
+        data = {"task": task_data(occurrence_id=occurrence_id)}
+        service = AsyncMock(
+            return_value={
+                "status": True,
+                "status_code": 200,
+                "message": "Task completion corrected",
+                "data": data,
+            }
+        )
+
+        with patch.object(tasks_service, "correct_task_completion", service):
+            response = self.client.post(
+                f"/households/{self.household_id}/tasks/"
+                f"{occurrence_id}/correct-completion"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"message": "Task completion corrected", "data": data},
+        )
+        self.assertEqual(service.await_args.args[3], occurrence_id)
+
+    def test_completion_requires_an_active_membership(self):
+        def deny():
+            raise HTTPException(
+                status_code=403, detail="Active membership required"
+            )
+
+        app.dependency_overrides[
+            household_dependencies.require_active_membership
+        ] = deny
+
+        response = self.client.post(
+            f"/households/{self.household_id}/tasks/{uuid4()}/complete"
+        )
+
+        self.assertEqual(response.status_code, 403)
+
 
 class TaskMigrationTests(unittest.TestCase):
     def load_migration(self):
@@ -1157,6 +1808,55 @@ class TaskMigrationTests(unittest.TestCase):
         self.assertIn('"tasks"', source)
         self.assertIn('"task_occurrences"', source)
         self.assertIn("uq_household_members_id_household_id", source)
+
+
+class TaskCompletionMigrationTests(unittest.TestCase):
+    def load_migration(self):
+        spec = importlib.util.spec_from_file_location(
+            "migration_0007", COMPLETION_MIGRATION_PATH
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        return module
+
+    def test_follows_the_tasks_revision(self):
+        module = self.load_migration()
+
+        self.assertEqual(module.revision, "0007")
+        self.assertEqual(module.down_revision, "0006")
+
+    def test_declares_completion_authorship_constraints_and_equivalence(self):
+        source = COMPLETION_MIGRATION_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('"completed_by"', source)
+        self.assertIn('"completed_at"', source)
+        self.assertIn("fk_task_occurrences_completed_by", source)
+        self.assertIn("ck_task_occurrences_completed_pair", source)
+        self.assertIn("ck_task_occurrences_completed_equivalence", source)
+        self.assertIn(
+            "(status = 'DONE') = (completed_at IS NOT NULL)", source
+        )
+
+    def test_backfills_done_occurrences_before_completion_constraints(self):
+        normalized = " ".join(
+            COMPLETION_MIGRATION_PATH.read_text(encoding="utf-8").split()
+        )
+        backfill = (
+            "UPDATE task_occurrences SET completed_by = created_by, "
+            "completed_at = updated_at WHERE status = 'DONE'"
+        )
+
+        self.assertIn(backfill, normalized)
+        backfill_index = normalized.index(backfill)
+
+        for constraint in [
+            "fk_task_occurrences_completed_by",
+            "ck_task_occurrences_completed_pair",
+            "ck_task_occurrences_completed_equivalence",
+        ]:
+            with self.subTest(constraint=constraint):
+                self.assertLess(backfill_index, normalized.index(constraint))
 
 
 if __name__ == "__main__":

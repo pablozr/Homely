@@ -5,10 +5,15 @@ import { useSessionStore } from '@/stores/session';
 import { tasksApi } from './api';
 
 export function tasksQueryKey(householdId: string) {
-  return ['households', householdId, 'tasks', 'pending'] as const;
+  return ['households', householdId, 'tasks', 'list'] as const;
 }
 
-export function usePendingTasks(householdId: string) {
+/**
+ * Lists the household's pending work plus its completed history. The backend
+ * orders pending first and completed last, so the panel can render both from
+ * one query.
+ */
+export function useHouseholdTasks(householdId: string) {
   const accessToken = useSessionStore((state) => state.accessToken);
 
   return useQuery({

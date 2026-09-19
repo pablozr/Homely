@@ -34,6 +34,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     updated_at: 'x',
     cancelled_at: null,
     cancelled_by: null,
+    completed_by: null,
+    completed_at: null,
     ...overrides,
   };
 }
@@ -196,6 +198,8 @@ test('prefills the form from an existing task', () => {
     updated_at: 'x',
     cancelled_at: null,
     cancelled_by: null,
+    completed_by: null,
+    completed_at: null,
   } as Task;
 
   assert.deepEqual(taskFormFromTask(task), {

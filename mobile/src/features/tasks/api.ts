@@ -40,4 +40,39 @@ export const tasksApi = {
       token,
     });
   },
+
+  completeTask(token: string, householdId: string, occurrenceId: string): Promise<TaskResponse> {
+    return request<TaskResponse>(`/households/${householdId}/tasks/${occurrenceId}/complete`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  undoTaskCompletion(
+    token: string,
+    householdId: string,
+    occurrenceId: string,
+  ): Promise<TaskResponse> {
+    return request<TaskResponse>(
+      `/households/${householdId}/tasks/${occurrenceId}/undo-completion`,
+      {
+        method: 'POST',
+        token,
+      },
+    );
+  },
+
+  correctTaskCompletion(
+    token: string,
+    householdId: string,
+    occurrenceId: string,
+  ): Promise<TaskResponse> {
+    return request<TaskResponse>(
+      `/households/${householdId}/tasks/${occurrenceId}/correct-completion`,
+      {
+        method: 'POST',
+        token,
+      },
+    );
+  },
 };

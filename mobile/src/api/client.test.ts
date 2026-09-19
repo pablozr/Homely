@@ -78,7 +78,7 @@ test('falls back without leaking an unknown error body', async (context) => {
     globalThis,
     'fetch',
     async () =>
-      new Response(JSON.stringify({ message: 'internal secret' }), {
+      new Response(JSON.stringify({ error: 'internal secret' }), {
         status: 422,
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -91,6 +91,69 @@ test('falls back without leaking an unknown error body', async (context) => {
     assert.equal(error.message.includes('internal secret'), false);
     return true;
   });
+});
+
+test('uses the backend message envelope of a non-success response', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(JSON.stringify({ message: 'Undo window has expired', data: {} }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  );
+
+  await assert.rejects(
+    request('/households/h1/tasks/o1/undo-completion', { method: 'POST' }),
+    (error: unknown) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'Undo window has expired');
+      return true;
+    },
+  );
+});
+
+test('prefers the FastAPI detail over the backend message envelope', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(
+        JSON.stringify({ detail: 'Invalid Idempotency-Key header', message: 'Request failed' }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      ),
+  );
+
+  await assert.rejects(request('/households', { method: 'POST' }), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 422);
+    assert.equal(error.message, 'Invalid Idempotency-Key header');
+    return true;
+  });
+});
+
+test('ignores a non-string message field instead of leaking it', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(JSON.stringify({ message: { detail: 'internal secret' }, data: {} }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  );
+
+  await assert.rejects(
+    request('/households/h1/tasks/o1/undo-completion', { method: 'POST' }),
+    (error: unknown) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'API request failed: 409');
+      return true;
+    },
+  );
 });
 
 test('falls back when the error body is not JSON', async (context) => {

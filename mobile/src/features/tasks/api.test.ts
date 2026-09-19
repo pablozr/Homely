@@ -37,6 +37,8 @@ const task = {
   updated_at: 'x',
   cancelled_at: null,
   cancelled_by: null,
+  completed_by: null,
+  completed_at: null,
 };
 
 test('creates a task with the access token and idempotency key', async (context) => {
@@ -106,4 +108,51 @@ test('cancels a task with a bodyless POST', async (context) => {
   assert.equal(calls[0].init?.body, undefined);
   assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer access-1');
   assert.equal(response.data.task.status, 'CANCELLED');
+});
+
+test('completes a task with a bodyless POST', async (context) => {
+  const calls = mockFetch(context, {
+    message: 'Task completed',
+    data: {
+      task: { ...task, status: 'DONE', completed_by: 'u1', completed_at: '2026-01-20T20:00:00Z' },
+    },
+  });
+
+  const response = await tasksApi.completeTask('access-1', 'h1', 'o1');
+
+  assert.equal(calls[0].url, `${API_URL}/households/h1/tasks/o1/complete`);
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.equal(calls[0].init?.body, undefined);
+  assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer access-1');
+  assert.equal(response.data.task.completed_by, 'u1');
+});
+
+test('undoes a task completion with a bodyless POST', async (context) => {
+  const calls = mockFetch(context, {
+    message: 'Task completion undone',
+    data: { task },
+  });
+
+  const response = await tasksApi.undoTaskCompletion('access-1', 'h1', 'o1');
+
+  assert.equal(calls[0].url, `${API_URL}/households/h1/tasks/o1/undo-completion`);
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.equal(calls[0].init?.body, undefined);
+  assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer access-1');
+  assert.equal(response.data.task.status, 'PENDING');
+});
+
+test('corrects a task completion with a bodyless POST', async (context) => {
+  const calls = mockFetch(context, {
+    message: 'Task completion corrected',
+    data: { task },
+  });
+
+  const response = await tasksApi.correctTaskCompletion('access-1', 'h1', 'o1');
+
+  assert.equal(calls[0].url, `${API_URL}/households/h1/tasks/o1/correct-completion`);
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.equal(calls[0].init?.body, undefined);
+  assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer access-1');
+  assert.equal(response.data.task.status, 'PENDING');
 });

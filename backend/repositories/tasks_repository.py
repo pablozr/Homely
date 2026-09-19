@@ -18,6 +18,8 @@ SELECT o.id AS occurrence_id,
        o.updated_at,
        o.cancelled_at,
        o.cancelled_by,
+       o.completed_by,
+       o.completed_at,
        hm.user_id AS assignee_user_id,
        u.fullname AS assignee_fullname
 FROM task_occurrences o
@@ -199,8 +201,14 @@ async def list_pending_occurrences(
         OCCURRENCE_SELECT
         + """
         WHERE o.household_id = $1
-          AND o.status = 'PENDING'
-        ORDER BY o.due_at ASC NULLS LAST, o.created_at ASC, o.id ASC
+          AND o.status IN ('PENDING', 'DONE')
+        ORDER BY
+            CASE o.status WHEN 'PENDING' THEN 0 ELSE 1 END,
+            CASE WHEN o.status = 'PENDING' THEN o.due_at END ASC NULLS LAST,
+            CASE WHEN o.status = 'PENDING' THEN o.created_at END ASC,
+            CASE WHEN o.status = 'DONE' THEN o.completed_at END DESC NULLS LAST,
+            CASE WHEN o.status = 'PENDING' THEN o.id END ASC,
+            CASE WHEN o.status = 'DONE' THEN o.id END DESC
         """,
         household_id,
     )
@@ -375,4 +383,92 @@ async def cancel_task_occurrence(
         occurrence_id,
         household_id,
         cancelled_by,
+    )
+
+
+async def lock_task_completion(
+    conn: asyncpg.Connection,
+    occurrence_id: UUID,
+    household_id: UUID,
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(
+        """
+        SELECT id, task_id, status, completed_by, completed_at
+        FROM task_occurrences
+        WHERE id = $1 AND household_id = $2
+        FOR UPDATE
+        """,
+        occurrence_id,
+        household_id,
+    )
+
+
+async def complete_task_occurrence(
+    conn: asyncpg.Connection,
+    occurrence_id: UUID,
+    household_id: UUID,
+    completed_by: UUID,
+) -> None:
+    await conn.execute(
+        """
+        UPDATE task_occurrences
+        SET status = 'DONE',
+            completed_by = $3,
+            completed_at = clock_timestamp(),
+            updated_at = now()
+        WHERE id = $1
+          AND household_id = $2
+          AND status = 'PENDING'
+        """,
+        occurrence_id,
+        household_id,
+        completed_by,
+    )
+
+
+async def undo_task_completion(
+    conn: asyncpg.Connection,
+    occurrence_id: UUID,
+    household_id: UUID,
+    completed_by: UUID,
+) -> bool:
+    status = await conn.execute(
+        """
+        UPDATE task_occurrences
+        SET status = 'PENDING',
+            completed_by = NULL,
+            completed_at = NULL,
+            updated_at = now()
+        WHERE id = $1
+          AND household_id = $2
+          AND status = 'DONE'
+          AND completed_by = $3
+          AND completed_at + interval '10 seconds' >= clock_timestamp()
+        """,
+        occurrence_id,
+        household_id,
+        completed_by,
+    )
+
+    return status == "UPDATE 1"
+
+
+async def correct_task_completion(
+    conn: asyncpg.Connection,
+    occurrence_id: UUID,
+    household_id: UUID,
+) -> None:
+    await conn.execute(
+        """
+        UPDATE task_occurrences
+        SET status = 'PENDING',
+            completed_by = NULL,
+            completed_at = NULL,
+            updated_at = now()
+        WHERE id = $1
+          AND household_id = $2
+          AND status = 'DONE'
+        """,
+        occurrence_id,
+        household_id,
     )

@@ -51,7 +51,25 @@ function extractErrorMessage(body: unknown, status: number): string {
     return fallback;
   }
 
-  return extractDetailMessage((body as { detail?: unknown }).detail) ?? fallback;
+  const { detail, message } = body as { detail?: unknown; message?: unknown };
+
+  // FastAPI errors use `detail`; the app's default envelope uses a string
+  // `message`. Prefer `detail` and only trust a non-empty string `message`
+  // so an arbitrary body is never surfaced as the error text.
+  const detailMessage = extractDetailMessage(detail);
+  if (detailMessage !== null) {
+    return detailMessage;
+  }
+
+  if (typeof message === 'string') {
+    const messageText = message.trim();
+
+    if (messageText.length > 0) {
+      return messageText;
+    }
+  }
+
+  return fallback;
 }
 
 async function readErrorBody(response: Response): Promise<unknown> {
