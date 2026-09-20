@@ -22,7 +22,19 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
   },
 
-  plugins: ['expo-router', 'expo-status-bar'],
+  plugins: [
+    'expo-router',
+    'expo-status-bar',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        imageWidth: 200,
+        resizeMode: 'contain',
+        backgroundColor: '#123D34',
+      },
+    ],
+  ],
 };
 
 export default config;
