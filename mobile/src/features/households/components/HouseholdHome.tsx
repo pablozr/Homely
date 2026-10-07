@@ -5,9 +5,11 @@ import { BrandMark } from '@/design/BrandMark';
 import type { Theme } from '@/design/tokens';
 import { useTheme } from '@/design/useTheme';
 import { useSignOut } from '@/features/auth/mutations';
+import { membershipRoleLabel } from '@/features/households/membership-presentation';
 import { useLeaveHousehold, useSelectHousehold } from '@/features/households/mutations';
 import type { HouseholdSummary } from '@/features/households/types';
 import { TaskListPanel } from '@/features/tasks/components/TaskListPanel';
+import { useSessionStore } from '@/stores/session';
 
 import { HouseholdInvitesPanel } from './HouseholdInvitesPanel';
 import { HouseholdMembersPanel } from './HouseholdMembersPanel';
@@ -24,6 +26,7 @@ export function HouseholdHome({ household, households }: HouseholdHomeProps) {
   const signOut = useSignOut();
   const selectHousehold = useSelectHousehold();
   const leaveHousehold = useLeaveHousehold();
+  const user = useSessionStore((state) => state.user);
   const isOwner = household.role === 'OWNER';
 
   function handleLeave() {
@@ -53,8 +56,19 @@ export function HouseholdHome({ household, households }: HouseholdHomeProps) {
       </View>
 
       <Text style={styles.title}>{household.name}</Text>
-      <Text style={styles.subtitle}>Fuso horário: {household.timezone}</Text>
-      <Text style={styles.role}>Seu papel: {isOwner ? 'Owner' : 'Morador'}</Text>
+
+      <View style={styles.metaRow}>
+        <View style={styles.roleBadge}>
+          <Text style={styles.roleBadgeLabel}>{membershipRoleLabel(household.role)}</Text>
+        </View>
+      </View>
+
+      {user ? (
+        <View style={styles.identity}>
+          <Text style={styles.identityName}>{user.fullname}</Text>
+          <Text style={styles.identityEmail}>{user.email}</Text>
+        </View>
+      ) : null}
 
       <HouseholdSelector
         households={households}
@@ -68,7 +82,13 @@ export function HouseholdHome({ household, households }: HouseholdHomeProps) {
 
       <HouseholdMembersPanel householdId={household.id} role={household.role} />
 
-      {isOwner ? <HouseholdInvitesPanel householdId={household.id} /> : null}
+      {isOwner ? (
+        <HouseholdInvitesPanel
+          key={household.id}
+          householdId={household.id}
+          householdName={household.name}
+        />
+      ) : null}
 
       {!isOwner ? (
         <Pressable
@@ -136,13 +156,22 @@ const createStyles = (theme: Theme) =>
       marginTop: theme.spacing.xs,
       color: theme.colors.textPrimary,
     },
-    subtitle: {
-      ...theme.typography.body,
-      marginTop: theme.spacing.xs,
-      color: theme.colors.textSecondary,
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: theme.spacing.sm,
     },
-    role: {
-      ...theme.typography.label,
+    roleBadge: {
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xxs,
+      borderRadius: theme.radius.full,
+      backgroundColor: theme.colors.primarySubtle,
+    },
+    roleBadgeLabel: { ...theme.typography.label, color: theme.colors.primary },
+    identity: { marginTop: theme.spacing.sm },
+    identityName: { ...theme.typography.label, color: theme.colors.textSecondary },
+    identityEmail: {
+      ...theme.typography.caption,
       marginTop: theme.spacing.xxs,
       color: theme.colors.textMuted,
     },

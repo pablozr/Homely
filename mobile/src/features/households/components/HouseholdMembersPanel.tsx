@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 
 import type { Theme } from '@/design/tokens';
 import { useTheme } from '@/design/useTheme';
+import { membershipRoleLabel } from '@/features/households/membership-presentation';
 import { useRemoveMember, useTransferOwnership } from '@/features/households/mutations';
 import { useHouseholdMembers } from '@/features/households/queries';
 import { useSessionStore } from '@/stores/session';
@@ -11,10 +12,6 @@ type HouseholdMembersPanelProps = {
   householdId: string;
   role: string;
 };
-
-export function roleLabel(role: string): string {
-  return role === 'OWNER' ? 'Owner' : 'Morador';
-}
 
 export function HouseholdMembersPanel({ householdId, role }: HouseholdMembersPanelProps) {
   const theme = useTheme();
@@ -38,8 +35,8 @@ export function HouseholdMembersPanel({ householdId, role }: HouseholdMembersPan
 
   function handleTransfer(membershipId: string, fullname: string) {
     Alert.alert(
-      'Transferir ownership',
-      `Transferir a posse da casa para ${fullname}? Voce passa a ser morador.`,
+      'Tornar responsável',
+      `Tornar ${fullname} responsável pela casa? Voce passa a ser morador.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -79,7 +76,7 @@ export function HouseholdMembersPanel({ householdId, role }: HouseholdMembersPan
                 {member.fullname}
                 {isSelf ? ' (voce)' : ''}
               </Text>
-              <Text style={styles.memberRole}>{roleLabel(member.role)}</Text>
+              <Text style={styles.memberRole}>{membershipRoleLabel(member.role)}</Text>
             </View>
 
             {canTransfer ? (
@@ -88,9 +85,9 @@ export function HouseholdMembersPanel({ householdId, role }: HouseholdMembersPan
                 onPress={() => handleTransfer(member.id, member.fullname)}
                 disabled={transferOwnership.isPending}
                 accessibilityRole="button"
-                accessibilityLabel={`Transferir ownership para ${member.fullname}`}
+                accessibilityLabel={`Tornar ${member.fullname} responsável`}
               >
-                <Text style={styles.actionLabel}>Tornar owner</Text>
+                <Text style={styles.actionLabel}>Tornar responsável</Text>
               </Pressable>
             ) : null}
 

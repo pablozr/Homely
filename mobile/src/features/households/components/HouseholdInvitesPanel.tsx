@@ -1,25 +1,53 @@
-import { useMemo, useRef } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { getErrorMessage } from '@/api/client';
+import { ConfirmationSheet } from '@/design/ConfirmationSheet';
 import type { Theme } from '@/design/tokens';
 import { useTheme } from '@/design/useTheme';
 import type { IdempotencyAttempt } from '@/features/households/idempotency';
 import { resolveIdempotencyAttempt } from '@/features/households/idempotency';
+import { buildInviteMessage, buildWhatsAppShareUrl } from '@/features/households/invite-sharing';
 import { useCreateInvite, useRevokeInvite } from '@/features/households/mutations';
 import { useHouseholdInvites } from '@/features/households/queries';
+import type { InviteSummary } from '@/features/households/types';
+import { useSessionStore } from '@/stores/session';
 
 type HouseholdInvitesPanelProps = {
   householdId: string;
+  householdName: string;
 };
 
-export function HouseholdInvitesPanel({ householdId }: HouseholdInvitesPanelProps) {
+type ShareFeedback = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
+export function HouseholdInvitesPanel({ householdId, householdName }: HouseholdInvitesPanelProps) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const invites = useHouseholdInvites(householdId);
   const createInvite = useCreateInvite();
   const revokeInvite = useRevokeInvite();
+  const fullname = useSessionStore((state) => state.user?.fullname ?? '');
   const attemptRef = useRef<IdempotencyAttempt | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<InviteSummary | null>(null);
+  const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
+
+  function announce(tone: ShareFeedback['tone'], message: string) {
+    setShareFeedback({ tone, message });
+    AccessibilityInfo.announceForAccessibility(message);
+  }
 
   function handleCreate() {
     attemptRef.current = resolveIdempotencyAttempt(attemptRef.current, householdId);
@@ -29,20 +57,70 @@ export function HouseholdInvitesPanel({ householdId }: HouseholdInvitesPanelProp
       {
         onSuccess: () => {
           attemptRef.current = null;
+          setShareFeedback(null);
         },
       },
     );
   }
 
-  function handleRevoke(inviteId: string) {
-    Alert.alert('Revogar convite', 'Quem ainda nao aceitou vai perder o acesso pelo link.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Revogar',
-        style: 'destructive',
-        onPress: () => revokeInvite.mutate({ householdId, inviteId }),
-      },
-    ]);
+  async function handleCopyLink(inviteUrl: string) {
+    try {
+      await Clipboard.setStringAsync(inviteUrl);
+      announce('success', 'Link copiado.');
+    } catch {
+      announce('error', 'Nao foi possivel copiar o link. Tente novamente.');
+    }
+  }
+
+  async function shareInviteMessage(inviteUrl: string) {
+    const message = buildInviteMessage({ fullname, householdName, inviteUrl });
+
+    try {
+      const result = await Share.share({ message });
+
+      if (result.action === Share.sharedAction) {
+        announce('success', 'Convite compartilhado.');
+      }
+    } catch {
+      announce('error', 'Nao foi possivel compartilhar o convite. Tente novamente.');
+    }
+  }
+
+  async function handleWhatsApp(inviteUrl: string) {
+    const message = buildInviteMessage({ fullname, householdName, inviteUrl });
+
+    try {
+      await Linking.openURL(buildWhatsAppShareUrl(message));
+    } catch {
+      // No WhatsApp handler: fall back to the native share sheet.
+      await shareInviteMessage(inviteUrl);
+    }
+  }
+
+  function handleOpenRevoke(invite: InviteSummary) {
+    revokeInvite.reset();
+    setShareFeedback(null);
+    setRevokeTarget(invite);
+  }
+
+  function handleCancelRevoke() {
+    if (revokeInvite.isPending) {
+      return;
+    }
+
+    revokeInvite.reset();
+    setRevokeTarget(null);
+  }
+
+  function handleConfirmRevoke() {
+    if (!revokeTarget) {
+      return;
+    }
+
+    revokeInvite.mutate(
+      { householdId, inviteId: revokeTarget.id },
+      { onSuccess: () => setRevokeTarget(null) },
+    );
   }
 
   const created = createInvite.data?.data;
@@ -87,6 +165,44 @@ export function HouseholdInvitesPanel({ householdId }: HouseholdInvitesPanelProp
           <Text style={styles.createdUrl} selectable accessibilityLabel="Link do convite">
             {created.invite_url}
           </Text>
+
+          <View style={styles.shareActions}>
+            <Pressable
+              style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
+              onPress={() => handleCopyLink(created.invite_url)}
+              accessibilityRole="button"
+              accessibilityLabel="Copiar link do convite"
+            >
+              <Text style={styles.shareLabel}>Copiar link</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
+              onPress={() => handleWhatsApp(created.invite_url)}
+              accessibilityRole="button"
+              accessibilityLabel="Compartilhar convite pelo WhatsApp"
+            >
+              <Text style={styles.shareLabel}>WhatsApp</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
+              onPress={() => shareInviteMessage(created.invite_url)}
+              accessibilityRole="button"
+              accessibilityLabel="Compartilhar convite"
+            >
+              <Text style={styles.shareLabel}>Compartilhar</Text>
+            </Pressable>
+          </View>
+
+          {shareFeedback ? (
+            <Text
+              style={shareFeedback.tone === 'error' ? styles.error : styles.feedback}
+              accessibilityLiveRegion="polite"
+            >
+              {shareFeedback.message}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -116,7 +232,7 @@ export function HouseholdInvitesPanel({ householdId }: HouseholdInvitesPanelProp
               pressed && styles.revokeButtonPressed,
               revokeInvite.isPending && styles.buttonDisabled,
             ]}
-            onPress={() => handleRevoke(invite.id)}
+            onPress={() => handleOpenRevoke(invite)}
             disabled={revokeInvite.isPending}
             accessibilityRole="button"
             accessibilityLabel={`Revogar convite ${invite.id.slice(0, 8)}`}
@@ -126,11 +242,23 @@ export function HouseholdInvitesPanel({ householdId }: HouseholdInvitesPanelProp
         </View>
       ))}
 
-      {revokeInvite.isError ? (
-        <Text style={styles.error} accessibilityLiveRegion="polite">
-          Nao foi possivel revogar o convite. Tente novamente.
-        </Text>
-      ) : null}
+      <ConfirmationSheet
+        visible={revokeTarget !== null}
+        title="Revogar convite"
+        message={
+          revokeTarget
+            ? `Convite ${revokeTarget.id.slice(0, 8)} — quem ainda nao aceitou vai perder o acesso pelo link.`
+            : ''
+        }
+        confirmLabel="Revogar convite"
+        onConfirm={handleConfirmRevoke}
+        onCancel={handleCancelRevoke}
+        pending={revokeInvite.isPending}
+        errorMessage={
+          revokeInvite.isError ? 'Nao foi possivel revogar o convite. Tente novamente.' : null
+        }
+        destructive
+      />
     </View>
   );
 }
@@ -171,6 +299,31 @@ const createStyles = (theme: Theme) =>
       ...theme.typography.label,
       marginTop: theme.spacing.xxs,
       color: theme.colors.textPrimary,
+    },
+
+    shareActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xs,
+      marginTop: theme.spacing.sm,
+    },
+    shareButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.outlineStrong,
+      backgroundColor: theme.colors.surface,
+    },
+    shareButtonPressed: { backgroundColor: theme.colors.surfaceAccent },
+    shareLabel: { ...theme.typography.label, color: theme.colors.primary },
+
+    feedback: {
+      ...theme.typography.label,
+      marginTop: theme.spacing.sm,
+      color: theme.colors.success,
     },
 
     empty: {
